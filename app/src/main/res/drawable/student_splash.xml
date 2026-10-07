@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="320dp"
+    android:viewportWidth="320"
+    android:viewportHeight="320">
+
+    <!-- Outer Soft Glow Aura -->
+    <path
+        android:fillColor="#1AFFC726"
+        android:pathData="M160,20 A140,140 0 1,1 159.9,20 Z" />
+    <path
+        android:fillColor="#228B5CF6"
+        android:pathData="M160,40 A120,120 0 1,1 159.9,40 Z" />
+
+    <!-- Orbital Light Rings -->
+    <path
+        android:strokeColor="#4DFFC726"
+        android:strokeWidth="1.5"
+        android:pathData="M160,50 A110,110 0 1,1 159.9,50 Z" />
+    <path
+        android:strokeColor="#33C4B5FD"
+        android:strokeWidth="1.5"
+        android:pathData="M160,65 A95,95 0 1,0 159.9,65 Z" />
+
+    <!-- Floating Knowledge Particles / Sparkles (✨) -->
+    <!-- Sparkle 1 Top Right -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M240,70 L243,78 L251,81 L243,84 L240,92 L237,84 L229,81 L237,78 Z" />
+    <!-- Sparkle 2 Top Left -->
+    <path
+        android:fillColor="#C4B5FD"
+        android:pathData="M75,95 L77,101 L83,103 L77,105 L75,111 L73,105 L67,103 L73,101 Z" />
+    <!-- Sparkle 3 Bottom Right -->
+    <path
+        android:fillColor="#FFC726"
+        android:pathData="M255,210 L257,215 L262,217 L257,219 L255,224 L253,219 L248,217 L253,215 Z" />
+    <!-- Small glowing dots -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M90,65 A3,3 0 1,1 89.9,65 Z" />
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M220,130 A4,4 0 1,1 219.9,130 Z" />
+    <path
+        android:fillColor="#A78BFA"
+        android:pathData="M80,210 A3.5,3.5 0 1,1 79.9,210 Z" />
+
+    <!-- Central Floating Digital Study Tablet / Base Glow -->
+    <path
+        android:fillColor="#2E1065"
+        android:pathData="M70,225 C70,210 250,210 250,225 L240,245 C240,255 80,255 80,245 Z" />
+    <path
+        android:fillColor="#4C1D95"
+        android:pathData="M80,220 C80,212 240,212 240,220 L235,235 C235,242 85,242 85,235 Z" />
+
+    <!-- Radiant Open Book Pages -->
+    <!-- Left Book Page -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M160,140 C125,120 80,130 60,145 L65,210 C85,195 125,185 160,205 Z" />
+    <path
+        android:fillColor="#E2E8F0"
+        android:pathData="M160,145 C128,128 85,135 68,148 L71,205 C88,192 128,185 160,200 Z" />
+    <!-- Right Book Page -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M160,140 C195,120 240,130 260,145 L255,210 C235,195 195,185 160,205 Z" />
+    <path
+        android:fillColor="#F1F5F9"
+        android:pathData="M160,145 C192,128 235,135 252,148 L249,205 C232,192 192,185 160,200 Z" />
+
+    <!-- Golden Book Spine & Bookmark Ribbons -->
+    <path
+        android:fillColor="#D97706"
+        android:pathData="M157,138 L163,138 L163,208 L157,208 Z" />
+    <path
+        android:fillColor="#EF4444"
+        android:pathData="M160,180 L172,225 L165,220 L158,225 Z" />
+
+    <!-- Book Page Text & Graph Lines -->
+    <!-- Left Page Lines -->
+    <path
+        android:strokeColor="#8B5CF6"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M80,160 L140,148 M82,173 L138,162 M85,186 L130,176" />
+    <!-- Right Page Lines & Graph -->
+    <path
+        android:strokeColor="#3B82F6"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M180,148 L240,160 M182,162 L238,173" />
+    <!-- Bar Chart Graphic on Right Page -->
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M185,195 L193,195 L193,180 L185,180 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M198,195 L206,195 L206,172 L198,172 Z" />
+    <path
+        android:fillColor="#6366F1"
+        android:pathData="M211,195 L219,195 L219,165 L211,165 Z" />
+
+    <!-- Floating Golden Graduation Mortarboard Cap -->
+    <!-- Cap Base Shadow -->
+    <path
+        android:fillColor="#33000000"
+        android:pathData="M160,102 Q205,112 160,120 Q115,112 160,102 Z" />
+    <!-- Cap Lower Band -->
+    <path
+        android:fillColor="#4C1D95"
+        android:pathData="M135,88 L135,100 C135,108 185,108 185,100 L185,88 Z" />
+    <path
+        android:fillColor="#6D28D9"
+        android:pathData="M138,90 L138,98 C138,104 182,104 182,98 L182,90 Z" />
+    <!-- Diamond Mortarboard Top -->
+    <path
+        android:fillColor="#7C3AED"
+        android:pathData="M160,65 L215,82 L160,98 L105,82 Z" />
+    <path
+        android:fillColor="#8B5CF6"
+        android:pathData="M160,67 L210,82 L160,95 L110,82 Z" />
+    <!-- Golden Cap Top Button & Tassel -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M156,81 A4,4 0 1,0 164,81 A4,4 0 1,0 156,81 Z" />
+    <path
+        android:strokeColor="#FFD700"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M160,81 C185,83 195,95 198,105" />
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M195,105 L201,105 L202,115 L194,115 Z" />
+
+    <!-- Quiz Achievement Checkmark Shield Badge Floating Above -->
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M202,110 A18,18 0 1,0 238,110 A18,18 0 1,0 202,110 Z" />
+    <path
+        android:fillColor="#059669"
+        android:pathData="M205,110 A15,15 0 1,0 235,110 A15,15 0 1,0 205,110 Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M213,110 L218,115 L227,104" />
+</vector>

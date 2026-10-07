@@ -1,0 +1,6 @@
+{
+  "name": "MCQ Test Series",
+  "description": "Comprehensive MCQ test practice companion for Class 8-12 students with daily challenges, subject & mock tests, instant scoring, and in-depth performance analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
