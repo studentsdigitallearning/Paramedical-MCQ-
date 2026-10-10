@@ -64,9 +64,11 @@ class SupabaseRealtimeClient private constructor() {
     }
 
     fun connect() {
+        if (!SupabaseConfig.isConfigured) return
         if (isConnected || webSocket != null) return
 
         val wsUrl = buildWsUrl()
+
         val request = Request.Builder()
             .url(wsUrl)
             .build()

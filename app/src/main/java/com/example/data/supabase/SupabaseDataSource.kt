@@ -406,9 +406,246 @@ class SupabaseDataSource(
     }
 
     /**
-     * Verifies student daily test eligibility from Supabase backend (Rules 5 & 6 & 16).
-     * Students can take unlimited attempts in the same Course+Class, but cannot take a Daily Test
-     * in another Course+Class on the same date.
+     * Obtains or registers a temporary daily test roll number from Supabase backend.
+     * Format: "YYMMDDNNNN", e.g. "2610090001".
+     * If the student already attempted or registered today across any course, returns the existing record.
+     */
+    suspend fun getOrCreateDailyRollNo(
+        studentId: String,
+        studentName: String,
+        courseName: String,
+        className: String,
+        dateKey: String
+    ): Result<com.example.model.DailyRollNoResult> {
+        // 1. First, check if this student ALREADY has a participant record for today
+        // Rule: Each student can receive only ONE temporary Roll Number per day across all courses.
+        val existingQuery = if (studentName.isNotBlank() && studentName != "Student") {
+            "or=(student_id.eq.$studentId,student_name.eq.$studentName)&date_key=eq.$dateKey&select=*"
+        } else {
+            "student_id=eq.$studentId&date_key=eq.$dateKey&select=*"
+        }
+        val checkRes = client.get("daily_participants", existingQuery)
+        if (checkRes.isSuccess) {
+            try {
+                val array = JSONArray(checkRes.getOrThrow())
+                if (array.length() > 0) {
+                    val obj = array.getJSONObject(0)
+                    val rollNo = obj.optString("roll_no", "")
+                    val hasAttempted = obj.optBoolean("has_attempted", false)
+                    val existingCourse = obj.optString("course_name", courseName)
+                    val existingClass = obj.optString("class_name", className)
+                    val score = obj.optDouble("score", 0.0).toFloat()
+                    val totalMarks = obj.optDouble("total_marks", 50.0).toFloat()
+                    if (rollNo.isNotBlank()) {
+                        return Result.success(
+                            com.example.model.DailyRollNoResult(
+                                rollNo = rollNo,
+                                alreadyAttempted = hasAttempted,
+                                courseName = existingCourse,
+                                className = existingClass,
+                                score = score,
+                                totalMarks = totalMarks,
+                                isNew = false
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error checking existing daily participant: ${e.message}")
+            }
+        }
+
+        // 2. Also check if already submitted in leaderboard
+        val leadQuery = if (studentName.isNotBlank() && studentName != "Student") {
+            "or=(student_id.eq.$studentId,student_name.eq.$studentName)&date_key=eq.$dateKey&select=*"
+        } else {
+            "student_id=eq.$studentId&date_key=eq.$dateKey&select=*"
+        }
+        val leadRes = client.get("leaderboard", leadQuery)
+        if (leadRes.isSuccess) {
+            try {
+                val array = JSONArray(leadRes.getOrThrow())
+                if (array.length() > 0) {
+                    val obj = array.getJSONObject(0)
+                    val rollNo = obj.optString("roll_no", "")
+                    val existingClass = obj.optString("class_name", className)
+                    val score = obj.optDouble("score", 0.0).toFloat()
+                    val totalMarks = obj.optDouble("total_marks", 50.0).toFloat()
+                    if (rollNo.isNotBlank()) {
+                        // Ensure backfilled into daily_participants
+                        val ensurePayload = JSONObject().apply {
+                            put("student_id", studentId)
+                            put("student_name", studentName)
+                            put("course_name", courseName)
+                            put("class_name", className)
+                            put("roll_no", rollNo)
+                            put("date_key", dateKey)
+                            put("has_attempted", true)
+                            put("score", score.toDouble())
+                            put("total_marks", totalMarks.toDouble())
+                        }.toString()
+                        client.post("daily_participants", ensurePayload)
+
+                        return Result.success(
+                            com.example.model.DailyRollNoResult(
+                                rollNo = rollNo,
+                                alreadyAttempted = true,
+                                courseName = courseName,
+                                className = existingClass,
+                                score = score,
+                                totalMarks = totalMarks,
+                                isNew = false
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error checking leaderboard for roll no: ${e.message}")
+            }
+        }
+
+        // 3. Try server-side RPC procedure
+        val payload = JSONObject().apply {
+            put("p_student_id", studentId)
+            put("p_student_name", studentName)
+            put("p_course_name", courseName)
+            put("p_class_name", className)
+            put("p_date_key", dateKey)
+        }.toString()
+
+        val rpcRes = client.post("rpc/get_or_create_daily_roll_no", payload)
+        if (rpcRes.isSuccess) {
+            try {
+                val json = JSONObject(rpcRes.getOrThrow())
+                val roll = json.optString("roll_no", "")
+                if (roll.isNotBlank()) {
+                    return Result.success(
+                        com.example.model.DailyRollNoResult(
+                            rollNo = roll,
+                            alreadyAttempted = json.optBoolean("already_attempted", false),
+                            courseName = json.optString("course_name", courseName),
+                            className = json.optString("class_name", className),
+                            score = json.optDouble("score", 0.0).toFloat(),
+                            totalMarks = json.optDouble("total_marks", 50.0).toFloat(),
+                            isNew = json.optBoolean("is_new", true)
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error parsing roll no RPC response: ${e.message}")
+            }
+        }
+
+        // 4. Robust Fallback: Scan existing roll numbers from both daily_participants and leaderboard
+        var maxSeq = 0
+        try {
+            val partRes = client.get("daily_participants", "date_key=eq.$dateKey&select=roll_no&order=roll_no.desc&limit=50")
+            if (partRes.isSuccess) {
+                val arr = JSONArray(partRes.getOrThrow())
+                for (k in 0 until arr.length()) {
+                    val r = arr.getJSONObject(k).optString("roll_no", "")
+                    if (r.length >= 10) {
+                        val seqPart = r.takeLast(4).toIntOrNull() ?: 0
+                        if (seqPart > maxSeq) maxSeq = seqPart
+                    }
+                }
+            }
+            val leadScanRes = client.get("leaderboard", "date_key=eq.$dateKey&select=roll_no&order=roll_no.desc&limit=50")
+            if (leadScanRes.isSuccess) {
+                val arr = JSONArray(leadScanRes.getOrThrow())
+                for (k in 0 until arr.length()) {
+                    val r = arr.getJSONObject(k).optString("roll_no", "")
+                    if (r.length >= 10) {
+                        val seqPart = r.takeLast(4).toIntOrNull() ?: 0
+                        if (seqPart > maxSeq) maxSeq = seqPart
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error determining maxSeq fallback: ${e.message}")
+        }
+
+        var candidateSeq = maxSeq + 1
+        var finalRollNo = com.example.util.DailyTestTimeUtils.generateTemporaryRollNo(dateKey, candidateSeq)
+
+        // Insert new participant record with collision retry loop (up to 5 attempts)
+        for (attempt in 1..5) {
+            finalRollNo = com.example.util.DailyTestTimeUtils.generateTemporaryRollNo(dateKey, candidateSeq)
+            val insertPayload = JSONObject().apply {
+                put("student_id", studentId)
+                put("student_name", studentName)
+                put("course_name", courseName)
+                put("class_name", className)
+                put("roll_no", finalRollNo)
+                put("date_key", dateKey)
+                put("has_attempted", false)
+                put("score", 0.0)
+                put("total_marks", 50.0)
+            }.toString()
+
+            val insertRes = client.post("daily_participants", insertPayload)
+            if (insertRes.isSuccess) {
+                break
+            } else {
+                val errMsg = insertRes.exceptionOrNull()?.message ?: ""
+                // If collision on (student_id, date_key), fetch existing
+                if (errMsg.contains("uq_daily_participants_student_date", ignoreCase = true)) {
+                    val fetchExisting = client.get("daily_participants", "student_id=eq.$studentId&date_key=eq.$dateKey&select=*")
+                    if (fetchExisting.isSuccess) {
+                        try {
+                            val arr = JSONArray(fetchExisting.getOrThrow())
+                            if (arr.length() > 0) {
+                                val obj = arr.getJSONObject(0)
+                                val roll = obj.optString("roll_no", "")
+                                if (roll.isNotBlank()) {
+                                    return Result.success(
+                                        com.example.model.DailyRollNoResult(
+                                            rollNo = roll,
+                                            alreadyAttempted = obj.optBoolean("has_attempted", false),
+                                            courseName = obj.optString("course_name", courseName),
+                                            className = obj.optString("class_name", className),
+                                            score = obj.optDouble("score", 0.0).toFloat(),
+                                            totalMarks = obj.optDouble("total_marks", 50.0).toFloat(),
+                                            isNew = false
+                                        )
+                                    )
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+                // Otherwise roll number collision, advance sequence and retry
+                candidateSeq++
+            }
+        }
+
+        return Result.success(
+            com.example.model.DailyRollNoResult(
+                rollNo = finalRollNo,
+                alreadyAttempted = false,
+                courseName = courseName,
+                className = className,
+                score = 0f,
+                totalMarks = 50f,
+                isNew = true
+            )
+        )
+    }
+
+    /**
+     * Resets daily participant session state at 12:00 AM IST.
+     * All historical leaderboard entries, scores, and attempts are preserved permanently.
+     */
+    suspend fun resetDailyParticipants(currentDateKey: String): Result<Boolean> {
+        // Do NOT delete historical leaderboard or attempt records.
+        // We preserve all historical user records for student history and analytics.
+        return Result.success(true)
+    }
+
+    /**
+     * Verifies student daily test eligibility from Supabase backend.
+     * Enforces the rule: strictly ONE daily test attempt per day across all courses.
+     * If already attempted today, returns isEligible = false with attempt details.
      */
     suspend fun checkDailyTestEligibility(
         studentId: String,
@@ -416,60 +653,79 @@ class SupabaseDataSource(
         className: String,
         dateKey: String
     ): Result<com.example.model.DailyEligibilityResult> {
-        val query = "student_id=eq.$studentId&date_key=eq.$dateKey&select=*"
-        val result = client.get("daily_attempts", query)
-        val jsonString = if (result.isSuccess) {
-            result.getOrThrow()
-        } else {
-            val fallbackRes = client.get("leaderboard", query)
-            if (fallbackRes.isSuccess) fallbackRes.getOrThrow() else "[]"
-        }
+        // 1. Check daily_participants table
+        val partQuery = "student_id=eq.$studentId&date_key=eq.$dateKey&select=*"
+        val partResult = client.get("daily_participants", partQuery)
+        if (partResult.isSuccess) {
+            try {
+                val array = JSONArray(partResult.getOrThrow())
+                if (array.length() > 0) {
+                    val obj = array.getJSONObject(0)
+                    val hasAttempted = obj.optBoolean("has_attempted", false)
+                    val rollNo = obj.optString("roll_no", "")
+                    val itemCourse = obj.optString("course_name", "")
+                    val itemClass = obj.optString("class_name", "")
+                    val score = obj.optDouble("score", 0.0).toFloat()
+                    val totalMarks = obj.optDouble("total_marks", 50.0).toFloat()
 
-        try {
-            val array = JSONArray(jsonString)
-            if (array.length() == 0) {
-                return Result.success(com.example.model.DailyEligibilityResult(isEligible = true, attemptsCount = 0))
-            }
-
-            var attemptsInCurrentClass = 0
-            var attemptedOtherClass: String? = null
-
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                val itemClassId = obj.optString("class_id", "")
-                val itemClassName = obj.optString("class_name", obj.optString("student_class", ""))
-
-                val isMatch = (itemClassId.isNotBlank() && itemClassId.equals(classId, ignoreCase = true)) ||
-                              (itemClassName.isNotBlank() && itemClassName.equals(className, ignoreCase = true))
-
-                if (isMatch) {
-                    attemptsInCurrentClass++
-                } else {
-                    attemptedOtherClass = if (itemClassName.isNotBlank()) itemClassName else itemClassId
+                    if (hasAttempted) {
+                        return Result.success(
+                            com.example.model.DailyEligibilityResult(
+                                isEligible = false,
+                                reason = "You have already completed today's Daily Test. Students are allowed only one attempt per day across all courses.",
+                                attemptedClassId = itemClass,
+                                attemptedClassName = "$itemCourse • $itemClass",
+                                attemptsCount = 1,
+                                previousAttemptRollNo = rollNo,
+                                previousAttemptScore = score,
+                                previousAttemptTotalMarks = totalMarks
+                            )
+                        )
+                    }
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error parsing daily_participants eligibility: ${e.message}")
             }
-
-            if (attemptedOtherClass != null && attemptsInCurrentClass == 0) {
-                return Result.success(
-                    com.example.model.DailyEligibilityResult(
-                        isEligible = false,
-                        reason = "You have already attempted today's Daily Test in another Course/Class.",
-                        attemptedClassName = attemptedOtherClass,
-                        attemptsCount = 0
-                    )
-                )
-            }
-
-            return Result.success(
-                com.example.model.DailyEligibilityResult(
-                    isEligible = true,
-                    attemptsCount = attemptsInCurrentClass
-                )
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking daily test eligibility: ${e.message}")
-            return Result.success(com.example.model.DailyEligibilityResult(isEligible = true))
         }
+
+        // 2. Also check leaderboard table
+        val query = "student_id=eq.$studentId&date_key=eq.$dateKey&select=*"
+        val leadResult = client.get("leaderboard", query)
+        if (leadResult.isSuccess) {
+            try {
+                val array = JSONArray(leadResult.getOrThrow())
+                if (array.length() > 0) {
+                    val obj = array.getJSONObject(0)
+                    val rollNo = obj.optString("roll_no", "")
+                    val itemCourse = obj.optString("course_name", "")
+                    val itemClass = obj.optString("class_name", "")
+                    val score = obj.optDouble("score", 0.0).toFloat()
+                    val totalMarks = obj.optDouble("total_marks", 50.0).toFloat()
+
+                    return Result.success(
+                        com.example.model.DailyEligibilityResult(
+                            isEligible = false,
+                            reason = "You have already completed today's Daily Test. Students are allowed only one attempt per day across all courses.",
+                            attemptedClassId = itemClass,
+                            attemptedClassName = if (itemCourse.isNotBlank()) "$itemCourse • $itemClass" else itemClass,
+                            attemptsCount = 1,
+                            previousAttemptRollNo = rollNo,
+                            previousAttemptScore = score,
+                            previousAttemptTotalMarks = totalMarks
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error checking leaderboard eligibility: ${e.message}")
+            }
+        }
+
+        return Result.success(
+            com.example.model.DailyEligibilityResult(
+                isEligible = true,
+                attemptsCount = 0
+            )
+        )
     }
 
     /**
@@ -523,6 +779,13 @@ class SupabaseDataSource(
                     .joinToString("")
                     .ifEmpty { "ST" }
 
+                val rollNo = obj.optString("roll_no", "").ifBlank {
+                    com.example.util.DailyTestTimeUtils.generateTemporaryRollNo(
+                        com.example.util.DailyTestTimeUtils.getCurrentDateKey(),
+                        i + 1
+                    )
+                }
+
                 rawList.add(
                     DailyLeaderboardEntry(
                         rank = 0,
@@ -534,7 +797,8 @@ class SupabaseDataSource(
                         completionTimeSeconds = completionTimeSeconds,
                         isCurrentUser = false,
                         attemptsCount = attemptsCount,
-                        avatarInitials = initials
+                        avatarInitials = initials,
+                        rollNo = rollNo
                     )
                 )
             }
@@ -542,25 +806,37 @@ class SupabaseDataSource(
             Log.e(TAG, "Error parsing leaderboard JSON: ${e.message}")
         }
 
-        // Keep only best attempt per student (Rule 8)
-        val bestPerStudent = mutableMapOf<String, DailyLeaderboardEntry>()
+        // Zero duplicate data: Deduplicate by Roll Number, Student ID, and Student Name
+        val bestEntries = mutableListOf<DailyLeaderboardEntry>()
         for (entry in rawList) {
-            val existing = bestPerStudent[entry.studentId]
-            if (existing == null) {
-                bestPerStudent[entry.studentId] = entry
+            val existingIndex = bestEntries.indexOfFirst { existing ->
+                (!entry.rollNo.isNullOrBlank() && !existing.rollNo.isNullOrBlank() && entry.rollNo == existing.rollNo) ||
+                (entry.studentId.isNotBlank() && entry.studentId == existing.studentId) ||
+                (entry.studentName.isNotBlank() && entry.studentName != "Student" && entry.studentName.equals(existing.studentName, ignoreCase = true))
+            }
+            if (existingIndex < 0) {
+                bestEntries.add(entry)
             } else {
+                val existing = bestEntries[existingIndex]
                 val isBetterScore = entry.score > existing.score
                 val isSameScoreFaster = entry.score == existing.score && entry.completionTimeSeconds < existing.completionTimeSeconds
+                val mergedRoll = if (!entry.rollNo.isNullOrBlank()) entry.rollNo else existing.rollNo
                 if (isBetterScore || isSameScoreFaster) {
-                    bestPerStudent[entry.studentId] = entry.copy(
-                        attemptsCount = maxOf(existing.attemptsCount, entry.attemptsCount)
+                    bestEntries[existingIndex] = entry.copy(
+                        attemptsCount = maxOf(existing.attemptsCount, entry.attemptsCount),
+                        rollNo = mergedRoll
+                    )
+                } else {
+                    bestEntries[existingIndex] = existing.copy(
+                        attemptsCount = maxOf(existing.attemptsCount, entry.attemptsCount),
+                        rollNo = mergedRoll
                     )
                 }
             }
         }
 
         // Rank priority: 1. Highest Score, 2. Fastest completion time (Rule 3)
-        return bestPerStudent.values
+        return bestEntries
             .sortedWith(
                 compareByDescending<DailyLeaderboardEntry> { it.score }
                     .thenBy { it.completionTimeSeconds }
@@ -572,6 +848,7 @@ class SupabaseDataSource(
 
     /**
      * Submits student test result to Supabase so the leaderboard is updated dynamically (Rules 9 & 13).
+     * Prevents duplicate data rows for the same student or roll number on the same day.
      */
     suspend fun submitLeaderboardEntry(
         studentId: String,
@@ -581,7 +858,9 @@ class SupabaseDataSource(
         score: Float,
         totalMarks: Float,
         completionTimeSeconds: Long,
-        attemptsCount: Int
+        attemptsCount: Int,
+        rollNo: String? = null,
+        courseName: String? = null
     ): Result<Boolean> {
         val payload = JSONObject().apply {
             put("student_id", studentId)
@@ -592,13 +871,46 @@ class SupabaseDataSource(
             put("total_marks", totalMarks.toDouble())
             put("completion_time_seconds", completionTimeSeconds)
             put("attempts_count", attemptsCount)
+            if (!rollNo.isNullOrBlank()) put("roll_no", rollNo)
+            if (!courseName.isNullOrBlank()) put("course_name", courseName)
             put("submitted_at", System.currentTimeMillis())
         }.toString()
 
-        val postResult = client.post("leaderboard", payload)
-        // Also log into daily_attempts table for participation and eligibility audit
+        // Check if an entry for this student or roll number already exists on this date to prevent duplicate data
+        val checkQuery = if (!rollNo.isNullOrBlank()) {
+            "or=(roll_no.eq.$rollNo,student_id.eq.$studentId)&date_key=eq.$dateKey&select=id,score,completion_time_seconds"
+        } else {
+            "student_id=eq.$studentId&date_key=eq.$dateKey&select=id,score,completion_time_seconds"
+        }
+        val existingRes = client.get("leaderboard", checkQuery)
+        var existingRowId: Int? = null
+        if (existingRes.isSuccess) {
+            try {
+                val arr = JSONArray(existingRes.getOrThrow())
+                if (arr.length() > 0) {
+                    val rowId = arr.getJSONObject(0).optInt("id", -1)
+                    if (rowId > 0) existingRowId = rowId
+                }
+            } catch (_: Exception) {}
+        }
+
+        val postResult = if (existingRowId != null) {
+            // Update existing row so no duplicate rows are created in leaderboard table
+            client.patch("leaderboard", "id=eq.$existingRowId", payload)
+        } else {
+            client.post("leaderboard", payload)
+        }
+
+        // Also log/update into daily_participants table to mark attempt completed
+        val partPayload = JSONObject().apply {
+            put("score", score.toDouble())
+            put("total_marks", totalMarks.toDouble())
+            put("has_attempted", true)
+        }.toString()
+        client.patch("daily_participants", "student_id=eq.$studentId&date_key=eq.$dateKey", partPayload)
+
         client.post("daily_attempts", payload)
-        if (postResult.isFailure) {
+        if (postResult.isFailure && existingRowId == null) {
             client.post("test_results", payload)
         }
         return Result.success(true)

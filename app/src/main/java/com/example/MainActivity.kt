@@ -21,6 +21,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.util.UserPreferences.init(applicationContext)
         enableEdgeToEdge()
         setContent {
             val isDarkTheme by viewModel.isDarkTheme.collectAsState()

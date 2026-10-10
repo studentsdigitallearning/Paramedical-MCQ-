@@ -88,35 +88,35 @@ fun SplashScreen(
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.padding(horizontal = 24.dp)
         ) {
-            // Top Graduation Cap in Purple Circle
+            // Beautiful App Logo Box
             Box(
                 modifier = Modifier
-                    .size(72.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF382A82)),
+                    .size(80.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(18.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.School,
-                    contentDescription = null,
-                    tint = Color(0xFFC4B5FD),
-                    modifier = Modifier.size(38.dp)
+                Image(
+                    painter = painterResource(id = R.drawable.app_logo),
+                    contentDescription = "App Logo",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
                 )
             }
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // MCQ Test Series typography
+            // JAC MCQ Master typography
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "MCQ Test ",
+                    text = "JAC MCQ ",
                     color = Color.White,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 0.5.sp
                 )
                 Text(
-                    text = "Series",
+                    text = "Master",
                     color = AccentGold,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.ExtraBold,

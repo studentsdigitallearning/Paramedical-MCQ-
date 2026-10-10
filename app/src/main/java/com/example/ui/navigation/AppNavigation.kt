@@ -78,21 +78,17 @@ import com.example.ui.components.CertificateDialog
 import com.example.ui.screens.AboutUsScreen
 import com.example.ui.screens.CategoriesScreen
 import com.example.ui.screens.ChapterSelectionScreen
-import com.example.ui.screens.ClassSelectionScreen
+import com.example.ui.screens.ChooseCourseScreen
 import com.example.ui.screens.ContactUsScreen
 import com.example.ui.screens.DailyTestScreen
 import com.example.ui.screens.DetailedAnalysisScreen
-import com.example.ui.screens.ForgotPasswordScreen
 import com.example.ui.screens.HelpSupportScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LeaderboardScreen
-import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.MonthlyStreakRewardsScreen
 import com.example.ui.screens.NoInternetScreen
 import com.example.ui.screens.NotificationsScreen
 import com.example.ui.screens.ProfileScreen
-import com.example.ui.screens.RegisterScreen
-import com.example.ui.screens.ResetPasswordScreen
 import com.example.ui.screens.ResultScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SplashScreen
@@ -107,11 +103,7 @@ import java.io.File
 
 sealed class Screen {
     object Splash : Screen()
-    object Login : Screen()
-    object Register : Screen()
-    object ForgotPassword : Screen()
-    object ResetPassword : Screen()
-    data class ClassSelection(val isSwitchMode: Boolean = false) : Screen()
+    data class ChooseCourse(val isSwitchMode: Boolean = false) : Screen()
     object Main : Screen()
     object Categories : Screen()
     object SubjectWise : Screen()
@@ -235,154 +227,37 @@ fun AppNavigation(
             is Screen.Splash -> {
                 SplashScreen(
                     onSplashFinished = {
-                        coroutineScope.launch {
-                            val hasValidSession = viewModel.checkSession()
-                            if (hasValidSession) {
-                                backStack = listOf(Screen.Main)
-                            } else {
-                                backStack = listOf(Screen.Login)
-                            }
-                        }
-                    }
-                )
-            }
-
-            is Screen.Login -> {
-                LoginScreen(
-                    onLogin = { email, password ->
-                        val res = viewModel.login(email, password)
-                        if (res.isSuccess) {
+                        val userPrefs = com.example.util.UserPreferences.getInstanceOrNull()
+                        if (userPrefs != null && userPrefs.hasSelectedCourseAndClass()) {
                             backStack = listOf(Screen.Main)
+                        } else {
+                            backStack = listOf(Screen.ChooseCourse(isSwitchMode = false))
                         }
-                        res
-                    },
-                    onGoogleLogin = {
-                        coroutineScope.launch {
-                            val googleResult = com.example.util.GoogleSignInHelper.initiateGoogleSignIn(context)
-                            if (googleResult.isSuccess) {
-                                val accountData = googleResult.getOrThrow()
-                                val authRes = viewModel.loginWithGoogle(
-                                    idToken = accountData.idToken,
-                                    nonce = accountData.nonce,
-                                    fallbackName = accountData.displayName
-                                )
-                                if (authRes.isSuccess) {
-                                    backStack = listOf(Screen.Main)
-                                } else {
-                                    val error = authRes.exceptionOrNull()?.message ?: "Google authentication failed"
-                                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-                                }
-                            } else {
-                                val error = googleResult.exceptionOrNull()?.message ?: "Google sign in cancelled"
-                                if (!error.contains("cancel", ignoreCase = true)) {
-                                    Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }
-                    },
-                    onNavigateToRegister = {
-                        navigateTo(Screen.Register)
-                    },
-                    onForgotPasswordClick = {
-                        navigateTo(Screen.ForgotPassword)
                     }
                 )
             }
 
-            is Screen.Register -> {
-                BackHandler { popBack() }
-                RegisterScreen(
-                    onRegister = { fullName, email, password ->
-                        val res = viewModel.register(fullName, email, password)
-                        if (res.isSuccess && !res.getOrThrow().isEmailConfirmationRequired) {
-                            backStack = listOf(Screen.Main)
-                        }
-                        res
-                    },
-                    onGoogleLogin = {
-                        coroutineScope.launch {
-                            val googleResult = com.example.util.GoogleSignInHelper.initiateGoogleSignIn(context)
-                            if (googleResult.isSuccess) {
-                                val accountData = googleResult.getOrThrow()
-                                val authRes = viewModel.loginWithGoogle(
-                                    idToken = accountData.idToken,
-                                    nonce = accountData.nonce,
-                                    fallbackName = accountData.displayName
-                                )
-                                if (authRes.isSuccess) {
-                                    backStack = listOf(Screen.Main)
-                                } else {
-                                    val error = authRes.exceptionOrNull()?.message ?: "Google authentication failed"
-                                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-                                }
-                            } else {
-                                val error = googleResult.exceptionOrNull()?.message ?: "Google sign in cancelled"
-                                if (!error.contains("cancel", ignoreCase = true)) {
-                                    Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }
-                    },
-                    onNavigateToLogin = {
-                        popBack()
-                    },
-                    onBackClick = {
-                        popBack()
-                    }
-                )
-            }
-
-            is Screen.ForgotPassword -> {
-                BackHandler { popBack() }
-                ForgotPasswordScreen(
-                    onResetPassword = { email ->
-                        viewModel.resetPassword(email)
-                    },
-                    onVerifyOtpAndReset = { email, otp, newPassword ->
-                        viewModel.resetPasswordWithOtp(email, otp, newPassword)
-                    },
-                    onBackClick = {
-                        popBack()
-                    }
-                )
-            }
-
-            is Screen.ResetPassword -> {
-                BackHandler { popBack() }
-                ResetPasswordScreen(
-                    onUpdatePassword = { newPassword ->
-                        viewModel.updatePassword(newPassword)
-                    },
-                    onBackClick = {
-                        popBack()
-                    },
-                    onSuccessLoginRedirect = {
-                        backStack = listOf(Screen.Login)
-                    }
-                )
-            }
-
-            is Screen.ClassSelection -> {
+            is Screen.ChooseCourse -> {
                 BackHandler(enabled = screen.isSwitchMode) {
                     popBack()
                 }
-                ClassSelectionScreen(
-                    classes = classes,
+                com.example.ui.screens.ChooseCourseScreen(
+                    availableClasses = classes,
                     currentClassId = student.selectedClassId,
-                    isLoading = isSyncing,
-                    errorMessage = syncError,
-                    onRetry = { viewModel.refreshDataFromSupabase() },
-                    onClassSelected = { classId ->
-                        viewModel.switchClass(classId)
+                    isSwitchMode = screen.isSwitchMode,
+                    onCourseSelected = { courseName, classId, className ->
+                        viewModel.selectCourseAndClass(
+                            courseName = courseName,
+                            classId = classId,
+                            className = className
+                        )
                         if (screen.isSwitchMode) {
                             popBack()
                         } else {
                             backStack = listOf(Screen.Main)
                         }
                     },
-                    onBackClick = if (screen.isSwitchMode) {
-                        { popBack() }
-                    } else null
+                    onBackClick = if (screen.isSwitchMode) { { popBack() } } else null
                 )
             }
 
@@ -414,17 +289,23 @@ fun AppNavigation(
                                         categories = categories,
                                         isDarkTheme = isDarkTheme,
                                         onClassChipClick = {
-                                            navigateTo(Screen.ClassSelection(isSwitchMode = true))
+                                            navigateTo(Screen.ChooseCourse(isSwitchMode = true))
                                         },
                                         onNotificationsClick = {
                                             navigateTo(Screen.Notifications)
                                         },
                                         onDailyChallengeStart = {
-                                            val dailyTest = viewModel.getDailyTest() 
-                                                ?: viewModel.getTests(categoryId = "cat_daily").firstOrNull() 
-                                                ?: viewModel.getTests().firstOrNull() 
-                                                ?: MockDataSource.defaultFallbackTest
-                                            navigateTo(Screen.TestInstructions(dailyTest))
+                                            val hasAttempted = viewModel.hasAttemptedDailyTestToday()
+                                            if (hasAttempted) {
+                                                val latestRes = latestResult
+                                                if (latestRes != null && (latestRes.testId == "test_daily_10" || latestRes.testTitle.contains("Daily", ignoreCase = true))) {
+                                                    navigateTo(Screen.Result(latestRes))
+                                                } else {
+                                                    selectedBottomTab = 1
+                                                }
+                                            } else {
+                                                selectedBottomTab = 1
+                                            }
                                         },
                                         onCategoryClick = { cat ->
                                             when (cat.type) {
@@ -451,14 +332,59 @@ fun AppNavigation(
                                         ?: viewModel.getTests(categoryId = "cat_daily").firstOrNull() 
                                         ?: viewModel.getTests().firstOrNull() 
                                         ?: MockDataSource.defaultFallbackTest
+                                    val hasAttemptedDaily = viewModel.hasAttemptedDailyTestToday()
+                                    val attemptDetails = viewModel.getDailyAttemptDetails()
+                                    val userPrefs = com.example.util.UserPreferences.getInstanceOrNull()
+                                    val currentRoll = student.currentDailyRollNo ?: userPrefs?.getTodayRollNo(dailyState.dateKey)
+
+                                    androidx.compose.runtime.LaunchedEffect(student.id, dailyState.dateKey) {
+                                        if (currentRoll.isNullOrBlank() && !hasAttemptedDaily) {
+                                            viewModel.getOrGenerateDailyRollNo()
+                                        }
+                                    }
+
                                     DailyTestScreen(
                                         dailyTest = dailyTest,
                                         currentClass = currentClass,
                                         dailyCountdown = dailyCountdown,
+                                        eligibility = viewModel.dailyEligibility.collectAsState().value,
+                                        hasAttemptedToday = hasAttemptedDaily,
+                                        savedAttemptDetails = attemptDetails,
+                                        bestResult = dailyBestResult ?: dailyState.currentUserBest,
+                                        studentName = student.name,
+                                        courseName = student.courseName,
+                                        currentRollNo = currentRoll,
                                         isDarkTheme = isDarkTheme,
                                         isLoading = isSyncing && tests.isEmpty(),
+                                        onRequestRollNumber = {
+                                            viewModel.getOrGenerateDailyRollNo()
+                                        },
+                                        onUpdateStudentName = { newName ->
+                                            viewModel.updateProfileName(newName)
+                                        },
                                         onStartDailyTestClick = { test ->
-                                            navigateTo(Screen.TestInstructions(test))
+                                            val hasAttempted = viewModel.hasAttemptedDailyTestToday()
+                                            if (hasAttempted) {
+                                                val latestRes = latestResult
+                                                if (latestRes != null && (latestRes.testId == "test_daily_10" || latestRes.testTitle.contains("Daily", ignoreCase = true))) {
+                                                    navigateTo(Screen.Result(latestRes))
+                                                } else {
+                                                    selectedBottomTab = 2
+                                                }
+                                            } else {
+                                                coroutineScope.launch {
+                                                    viewModel.getOrGenerateDailyRollNo()
+                                                    navigateTo(Screen.TestInstructions(test))
+                                                }
+                                            }
+                                        },
+                                        onViewResultClick = {
+                                            val latestRes = latestResult
+                                            if (latestRes != null && (latestRes.testId == "test_daily_10" || latestRes.testTitle.contains("Daily", ignoreCase = true))) {
+                                                navigateTo(Screen.Result(latestRes))
+                                            } else {
+                                                selectedBottomTab = 2
+                                            }
                                         }
                                     )
                                 }
@@ -472,11 +398,17 @@ fun AppNavigation(
                                         dailyCountdown = dailyCountdown,
                                         isLoading = isSyncing && dailyState.top100.isEmpty(),
                                         onStartOrRetakeDailyTest = {
-                                            val dailyTest = viewModel.getDailyTest() 
-                                                ?: viewModel.getTests(categoryId = "cat_daily").firstOrNull() 
-                                                ?: viewModel.getTests().firstOrNull() 
-                                                ?: MockDataSource.defaultFallbackTest
-                                            navigateTo(Screen.TestInstructions(dailyTest))
+                                            val hasAttempted = viewModel.hasAttemptedDailyTestToday()
+                                            if (hasAttempted) {
+                                                val latestRes = latestResult
+                                                if (latestRes != null && (latestRes.testId == "test_daily_10" || latestRes.testTitle.contains("Daily", ignoreCase = true))) {
+                                                    navigateTo(Screen.Result(latestRes))
+                                                } else {
+                                                    selectedBottomTab = 1
+                                                }
+                                            } else {
+                                                selectedBottomTab = 1
+                                            }
                                         },
                                         onShareDailyResult = { viewModel.shareDailyResult(context) },
                                         onGenerateCertificate = {
@@ -498,7 +430,7 @@ fun AppNavigation(
                                         isLoading = isSyncing && student.name.isBlank(),
                                         onToggleTheme = { viewModel.toggleTheme() },
                                         onSwitchClassClick = {
-                                            navigateTo(Screen.ClassSelection(isSwitchMode = true))
+                                            navigateTo(Screen.ChooseCourse(isSwitchMode = true))
                                         },
                                         onSettingsClick = {
                                             navigateTo(Screen.Settings)
@@ -509,20 +441,8 @@ fun AppNavigation(
                                         onStreakClick = {
                                             navigateTo(Screen.MonthlyStreakRewards)
                                         },
-                                        onLogoutClick = {
-                                            coroutineScope.launch {
-                                                viewModel.logout()
-                                                backStack = listOf(Screen.Login)
-                                            }
-                                        },
-                                        onDeleteAccountClick = {
-                                            coroutineScope.launch {
-                                                val res = viewModel.deleteAccount()
-                                                if (res.isSuccess) {
-                                                    Toast.makeText(context, "Account and personal data permanently deleted", Toast.LENGTH_LONG).show()
-                                                }
-                                                backStack = listOf(Screen.Login)
-                                            }
+                                        onUpdateProfileName = { newName ->
+                                            viewModel.updateProfileName(newName)
                                         }
                                     )
                                 }
@@ -537,16 +457,13 @@ fun AppNavigation(
                         student = student,
                         currentClass = currentClass,
                         onSwitchClassClick = {
-                            navigateTo(Screen.ClassSelection(isSwitchMode = true))
+                            navigateTo(Screen.ChooseCourse(isSwitchMode = true))
                         },
                         onNavigateAboutUs = {
                             navigateTo(Screen.AboutUs)
                         },
                         onNavigateContactUs = {
                             navigateTo(Screen.ContactUs)
-                        },
-                        onLogoutClick = {
-                            backStack = listOf(Screen.Login)
                         }
                     )
                 }
@@ -786,11 +703,8 @@ fun AppNavigation(
                     isDarkTheme = isDarkTheme,
                     onBackClick = { popBack() },
                     onStartDailyTest = {
-                        val dailyTest = viewModel.getDailyTest() 
-                            ?: viewModel.getTests(categoryId = "cat_daily").firstOrNull() 
-                            ?: viewModel.getTests().firstOrNull() 
-                            ?: MockDataSource.defaultFallbackTest
-                        navigateTo(Screen.TestInstructions(dailyTest))
+                        popBack()
+                        selectedBottomTab = 1
                     }
                 )
             }

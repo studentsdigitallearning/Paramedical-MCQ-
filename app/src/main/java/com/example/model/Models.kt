@@ -63,6 +63,8 @@ data class Student(
     val name: String = "",
     val email: String = "",
     val selectedClassId: String = "class_10",
+    val courseName: String = "Class 10",
+    val currentDailyRollNo: String? = null,
     val xp: Int = 0,
     val level: Int = 1,
     val streakDays: Int = 0,
@@ -74,6 +76,16 @@ data class Student(
     val weeklyGoal: Int = 5,
     val weeklyCompleted: Int = 0
 )
+
+data class CourseData(
+    val id: String,
+    val name: String,
+    val description: String,
+    val hasClasses: Boolean,
+    val targetClassId: String? = null,
+    val iconKey: String = "school"
+)
+
 
 data class ClassData(
     val id: String,
@@ -157,6 +169,7 @@ data class Attempt(
     val startedAtEpoch: Long,
     val endsAtEpoch: Long,
     val totalDurationSeconds: Long,
+    val rollNo: String? = null,
     val answers: Map<Int, Int> = emptyMap(), // questionIndex -> optionIndex
     val markedForReview: Set<Int> = emptySet(), // question indices
     val currentQuestionIndex: Int = 0,
@@ -191,6 +204,7 @@ data class TestResult(
     val newBadgeUnlocked: String? = null,
     val questionsReview: List<QuestionReview>,
     val accuracyPercent: Int,
+    val rollNo: String? = null,
     val strongestChapter: String = "Real Numbers",
     val weakestChapter: String = "Triangles"
 )
@@ -242,7 +256,8 @@ data class DailyTestAttempt(
     val wrongCount: Int,
     val notAttemptedCount: Int,
     val completionTimeSeconds: Long,
-    val submittedAtEpoch: Long
+    val submittedAtEpoch: Long,
+    val rollNo: String? = null
 )
 
 data class DailyBestResult(
@@ -258,6 +273,7 @@ data class DailyBestResult(
     val attemptsCount: Int = 1,
     val correctCount: Int = 0,
     val wrongCount: Int = 0,
+    val rollNo: String? = null,
     val updatedAtEpoch: Long = System.currentTimeMillis()
 )
 
@@ -271,15 +287,30 @@ data class DailyLeaderboardEntry(
     val completionTimeSeconds: Long,
     val isCurrentUser: Boolean = false,
     val attemptsCount: Int = 1,
-    val avatarInitials: String = ""
+    val avatarInitials: String = "",
+    val rollNo: String? = null
 )
+
 
 data class DailyEligibilityResult(
     val isEligible: Boolean = true,
     val reason: String? = null,
     val attemptedClassId: String? = null,
     val attemptedClassName: String? = null,
-    val attemptsCount: Int = 0
+    val attemptsCount: Int = 0,
+    val previousAttemptRollNo: String? = null,
+    val previousAttemptScore: Float? = null,
+    val previousAttemptTotalMarks: Float? = null
+)
+
+data class DailyRollNoResult(
+    val rollNo: String,
+    val alreadyAttempted: Boolean,
+    val courseName: String,
+    val className: String,
+    val score: Float,
+    val totalMarks: Float,
+    val isNew: Boolean
 )
 
 data class DailyLeaderboardState(

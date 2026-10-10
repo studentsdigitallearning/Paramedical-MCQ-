@@ -27,6 +27,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,21 +84,16 @@ fun AboutUsScreen(
                         Box(
                             modifier = Modifier
                                 .size(76.dp)
-                                .shadow(6.dp, CircleShape, spotColor = PrimaryPurple.copy(alpha = 0.5f))
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(PrimaryPurple, Color(0xFF4C1D95))
-                                    )
-                                )
-                                .border(2.dp, AccentGold.copy(alpha = 0.6f), CircleShape),
+                                .shadow(6.dp, RoundedCornerShape(18.dp), spotColor = PrimaryPurple.copy(alpha = 0.5f))
+                                .clip(RoundedCornerShape(18.dp))
+                                .border(1.5.dp, AccentGold.copy(alpha = 0.6f), RoundedCornerShape(18.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.School,
+                            Image(
+                                painter = painterResource(id = R.drawable.app_logo),
                                 contentDescription = "App Logo",
-                                tint = Color.White,
-                                modifier = Modifier.size(40.dp)
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
                             )
                         }
 
@@ -237,61 +236,9 @@ fun AboutUsScreen(
                 }
             }
 
-            // Basic App Information
-            item {
-                GlassCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Text(
-                            text = "Basic Information",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        InfoRow(label = "Platform", value = "Android (Jetpack Compose)")
-                        InfoRow(label = "Target Audience", value = "Students (Class 8 – 12)")
-                        InfoRow(label = "Subjects Covered", value = "Math, Science, Social, English, Hindi")
-                        InfoRow(label = "Build Version", value = "${AppConfig.APP_VERSION} (${AppConfig.APP_VERSION_CODE})")
-                        InfoRow(label = "Design System", value = "Material 3 Indigo Glass")
-                        InfoRow(label = "Status", value = "Official Production Release")
-                    }
-                }
-            }
-
             item {
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun InfoRow(
-    label: String,
-    value: String
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
     }
 }

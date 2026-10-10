@@ -1,6 +1,9 @@
 package com.example.ui.components
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -37,9 +40,11 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
@@ -86,11 +91,9 @@ fun AppSidebar(
     currentClass: ClassData? = null,
     onSwitchClassClick: (() -> Unit)? = null,
     onNavigateAboutUs: () -> Unit,
-    onNavigateContactUs: () -> Unit,
-    onLogoutClick: () -> Unit
+    onNavigateContactUs: () -> Unit
 ) {
     val context = LocalContext.current
-    var showLogoutDialog by remember { mutableStateOf(false) }
 
     // Intercept back button: pressing back closes the sidebar
     if (isOpen) {
@@ -239,13 +242,30 @@ fun AppSidebar(
                                 AppConfig.rateApp(context)
                             }
                         )
+                        DrawerDivider()
 
-                        Spacer(modifier = Modifier.height(18.dp))
-
-                        // 7. Logout (Soft light-red card container matching Image 1)
-                        LogoutDrawerCard(
+                        // 7. Official Website
+                        DrawerMenuItem(
+                            icon = Icons.Default.Language,
+                            iconTint = Color(0xFF2563EB),
+                            iconBg = Color(0xFFDBEAFE),
+                            title = "Official Website",
                             onClick = {
-                                showLogoutDialog = true
+                                onClose()
+                                AppConfig.openWebsite(context)
+                            }
+                        )
+                        DrawerDivider()
+
+                        // 8. Telegram Community
+                        DrawerMenuItem(
+                            icon = Icons.Default.Send,
+                            iconTint = Color(0xFF0284C7),
+                            iconBg = Color(0xFFE0F2FE),
+                            title = "Telegram Channel",
+                            onClick = {
+                                onClose()
+                                AppConfig.openTelegramChannel(context)
                             }
                         )
 
@@ -254,71 +274,6 @@ fun AppSidebar(
                 }
             }
         }
-    }
-
-    // Logout Confirmation Dialog
-    if (showLogoutDialog) {
-        AlertDialog(
-            onDismissRequest = { showLogoutDialog = false },
-            icon = {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(ErrorRed.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Logout,
-                        contentDescription = null,
-                        tint = ErrorRed,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            },
-            title = {
-                Text(
-                    text = "Logout?",
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleLarge
-                )
-            },
-            text = {
-                Text(
-                    text = "Are you sure you want to logout?",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showLogoutDialog = false
-                        onClose()
-                        onLogoutClick()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        text = "Logout",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            dismissButton = {
-                OutlinedButton(
-                    onClick = { showLogoutDialog = false },
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        text = "Cancel",
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-        )
     }
 }
 
@@ -376,20 +331,19 @@ private fun DrawerHeader(
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // White rounded square box with graduation cap
+                // Beautiful App Logo Box
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .shadow(4.dp, RoundedCornerShape(14.dp), spotColor = Color(0x30000000))
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color.White),
+                        .shadow(4.dp, RoundedCornerShape(12.dp), spotColor = Color(0x30000000))
+                        .clip(RoundedCornerShape(12.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.School,
+                    Image(
+                        painter = painterResource(id = R.drawable.app_logo),
                         contentDescription = "App Logo",
-                        tint = Color(0xFF5B21B6),
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
                     )
                 }
 
@@ -398,13 +352,13 @@ private fun DrawerHeader(
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "Class Master ",
+                            text = "JAC MCQ ",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White
                         )
                         Text(
-                            text = "MCQ",
+                            text = "Master",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = AccentGold
@@ -564,61 +518,3 @@ private fun DrawerDivider() {
     )
 }
 
-/**
- * Special Logout Card matching Image 1:
- * - Soft reddish container
- * - Red square icon
- * - Red bold text
- * - Red chevron
- */
-@Composable
-private fun LogoutDrawerCard(
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFFFFF1F2))
-            .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 12.dp)
-            .testTag("drawer_item_logout"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFFFE4E6)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Logout,
-                    contentDescription = null,
-                    tint = Color(0xFFEF4444),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Text(
-                text = "Logout",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFEF4444)
-            )
-        }
-
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = Color(0xFFEF4444),
-            modifier = Modifier.size(20.dp)
-        )
-    }
-}

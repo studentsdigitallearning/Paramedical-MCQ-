@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CardMembership
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocalFireDepartment
@@ -62,6 +63,11 @@ import com.example.ui.theme.InfoBlue
 import com.example.ui.theme.PrimaryPurple
 import com.example.ui.theme.SuccessGreen
 import com.example.util.DailyTestTimeUtils
+
+private fun formatStudentDisplayName(rawName: String, isUser: Boolean): String {
+    val cleanName = rawName.replace(Regex("(?i)\\s*\\(you\\)+"), "").trim()
+    return if (isUser) "$cleanName (You)" else cleanName
+}
 
 @Composable
 fun LeaderboardScreen(
@@ -263,8 +269,8 @@ fun LeaderboardScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                     PerformanceMetricItem(
-                                        label = "Attempts",
-                                        value = "${bestResult?.attemptsCount ?: 1}",
+                                        label = "Participants",
+                                        value = "%,d".format(dailyState.totalParticipants),
                                         color = AccentGold,
                                         modifier = Modifier.weight(1f)
                                     )
@@ -272,7 +278,7 @@ fun LeaderboardScreen(
 
                                 Spacer(modifier = Modifier.height(12.dp))
 
-                                // Ahead & Behind Statistics
+                                // Ahead, Behind & Total Participants Statistics
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -281,6 +287,17 @@ fun LeaderboardScreen(
                                         .padding(vertical = 8.dp, horizontal = 12.dp),
                                     horizontalArrangement = Arrangement.SpaceAround
                                 ) {
+                                    Text(
+                                        text = "Total Today: %,d".format(dailyState.totalParticipants),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PrimaryPurple
+                                    )
+                                    Text(
+                                        text = "•",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
                                     Text(
                                         text = "Ahead of You: ${dailyState.studentsAhead}",
                                         fontSize = 12.sp,
@@ -302,33 +319,35 @@ fun LeaderboardScreen(
 
                                 Spacer(modifier = Modifier.height(14.dp))
 
-                                // Actions: Unlimited re-attempts in same Course+Class (Rule 8) + Share + Cert
+                                // Completed Status Badge & Share / Certificate Actions
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Button(
-                                        onClick = onStartOrRetakeDailyTest,
+                                    Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(44.dp)
-                                            .testTag("retake_daily_test_button"),
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isUserOutsideTop100) AccentOrange else PrimaryPurple
-                                        )
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(SuccessGreen.copy(alpha = 0.12f))
+                                            .border(1.dp, SuccessGreen.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                            .padding(vertical = 10.dp, horizontal = 12.dp),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Replay,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (isUserOutsideTop100) "Try Again to Enter Top 100 🎯" else "Re-attempt to Improve Rank 🔥",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = null,
+                                                tint = SuccessGreen,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Daily Test Attempted Today (1 attempt/day)",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = SuccessGreen
+                                            )
+                                        }
                                     }
 
                                     Row(
@@ -386,7 +405,7 @@ fun LeaderboardScreen(
                         }
                     }
                 } else {
-                    // Rule 6: Unattempted state message (No fake rank, pure info banner)
+                    // Unattempted state banner with Start Test registration trigger
                     item {
                         Card(
                             modifier = Modifier
@@ -397,23 +416,51 @@ fun LeaderboardScreen(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                             )
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Info,
-                                    contentDescription = null,
-                                    tint = PrimaryPurple,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = "Take today's Daily Test to get your rank.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = PrimaryPurple,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Take today's Daily Test to get your rank & Roll Number.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(
+                                    onClick = onStartOrRetakeDailyTest,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(44.dp)
+                                        .testTag("start_daily_test_leaderboard_button"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = PrimaryPurple,
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Start Daily Test 🎯",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
                             }
                         }
                     }
@@ -483,31 +530,66 @@ fun LeaderboardScreen(
                         Spacer(modifier = Modifier.height(10.dp))
                     }
 
-                    // Top 100 Header (Rule 2 & 7: max 100, if 35 show 35 without fake entries)
+                    // Daily Leaderboard Header & Column Labels
                     item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "TOP 100 LEADERBOARD",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Text(
-                                text = "${dailyState.top100.size} students",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "DAILY LEADERBOARD",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Text(
+                                    text = "${dailyState.top100.size} participants",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Rank",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.width(44.dp)
+                                    )
+                                    Text(
+                                        text = "Student & Roll Number",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Text(
+                                    text = "Score",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
 
-                    // Main Leaderboard Items (Rank 1 to 100) (Rule 2 & 5)
-                    // Lists all ranked students starting from Rank 1, 2, 3... up to 100.
-                    items(dailyState.top100) { entry ->
+                    // Main Leaderboard Items (Ranked students)
+                    items(
+                        items = dailyState.top100,
+                        key = { it.rollNo?.takeIf { r -> r.isNotBlank() } ?: "${it.studentId}_${it.rank}" },
+                        contentType = { "leaderboard_row" }
+                    ) { entry ->
                         DailyLeaderboardRowItem(entry = entry)
                     }
 
@@ -575,15 +657,16 @@ fun LeaderboardScreen(
 
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
-                                                    text = "${bestResult.studentName} (You)",
+                                                    text = formatStudentDisplayName(bestResult.studentName, true),
                                                     style = MaterialTheme.typography.titleSmall,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = MaterialTheme.colorScheme.onSurface,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
+                                                val rollText = if (!bestResult.rollNo.isNullOrBlank()) " • Roll: ${bestResult.rollNo}" else ""
                                                 Text(
-                                                    text = "${bestResult.studentClass} • Rank #$userRank of %,d".format(dailyState.totalParticipants),
+                                                    text = "${bestResult.studentClass}$rollText • Rank #$userRank of %,d".format(dailyState.totalParticipants),
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     fontSize = 11.sp,
@@ -774,7 +857,7 @@ fun DailyPodiumCard(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = if (isUser) "${entry.studentName} (You)" else entry.studentName,
+                text = formatStudentDisplayName(entry.studentName, isUser),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = if (isUser) FontWeight.ExtraBold else FontWeight.Bold,
                 color = if (isUser) PrimaryPurple else MaterialTheme.colorScheme.onSurface,
@@ -786,6 +869,19 @@ fun DailyPodiumCard(
             )
 
             Spacer(modifier = Modifier.height(2.dp))
+
+            if (!entry.rollNo.isNullOrBlank()) {
+                Text(
+                    text = "Roll: ${entry.rollNo}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+            }
 
             Text(
                 text = "${entry.score.toInt()}/${entry.totalMarks.toInt()}",
@@ -931,21 +1027,42 @@ fun DailyLeaderboardRowItem(entry: DailyLeaderboardEntry) {
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (isUser) "${entry.studentName} (You)" else entry.studentName,
+                        text = formatStudentDisplayName(entry.studentName, isUser),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = if (isUser) FontWeight.ExtraBold else FontWeight.SemiBold,
                         color = if (isUser) PrimaryPurple else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = "${entry.className} • ${entry.attemptsCount} attempt${if (entry.attemptsCount > 1) "s" else ""}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (!entry.rollNo.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Roll: ${entry.rollNo}",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        Text(
+                            text = entry.className,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
 

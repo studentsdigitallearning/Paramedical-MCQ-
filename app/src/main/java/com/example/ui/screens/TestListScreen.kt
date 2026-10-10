@@ -121,7 +121,11 @@ fun TestListScreen(
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(tests) { test ->
+                items(
+                    items = tests,
+                    key = { it.id },
+                    contentType = { "test_item" }
+                ) { test ->
                     TestItemCard(
                         test = test,
                         onStartClick = { onTestClick(test) }

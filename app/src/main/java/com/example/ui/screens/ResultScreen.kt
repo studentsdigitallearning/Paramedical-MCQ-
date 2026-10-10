@@ -396,8 +396,19 @@ fun ResultScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
 
+                        if (!result.rollNo.isNullOrBlank() || !dailyBestResult?.rollNo.isNullOrBlank()) {
+                            val displayRoll = result.rollNo ?: dailyBestResult?.rollNo ?: ""
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Temporary Daily Roll No: $displayRoll",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryPurple
+                            )
+                        }
+
                         Text(
-                            text = "Total Participants: %,d • Unlimited attempts allowed today! Only your best score is counted.".format(totalParticipants),
+                            text = "Total Participants: %,d • One daily attempt allowed across all courses.".format(totalParticipants),
                             fontSize = 11.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -452,32 +463,6 @@ fun ResultScreen(
                         style = MaterialTheme.typography.titleMedium,
                         color = PrimaryPurple,
                         fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Retake Daily Test button to improve score
-                OutlinedButton(
-                    onClick = onRetakeDailyTest,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .testTag("retake_daily_test_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Improve Score (Retake Test)",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
                     )
                 }
 

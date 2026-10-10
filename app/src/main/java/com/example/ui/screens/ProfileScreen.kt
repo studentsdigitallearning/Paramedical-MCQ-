@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocalFireDepartment
@@ -33,9 +34,13 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -72,11 +77,10 @@ fun ProfileScreen(
     onSettingsClick: () -> Unit,
     onHelpClick: () -> Unit,
     onStreakClick: () -> Unit = {},
-    onLogoutClick: () -> Unit,
-    onDeleteAccountClick: () -> Unit = {}
+    onUpdateProfileName: ((String) -> Unit)? = null
 ) {
-    var showLogoutDialog by remember { mutableStateOf(false) }
-    var showDeleteAccountDialog by remember { mutableStateOf(false) }
+    var showEditNameDialog by remember { mutableStateOf(false) }
+    var editedNameText by remember(student.name) { mutableStateOf(student.name) }
 
     if (isLoading) {
         Column(
@@ -150,19 +154,35 @@ fun ProfileScreen(
                         Spacer(modifier = Modifier.width(16.dp))
 
                         Column {
-                            Text(
-                                text = student.name,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = student.email,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { showEditNameDialog = true }
+                            ) {
+                                Text(
+                                    text = student.name.ifBlank { "Student" },
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit Name",
+                                    tint = PrimaryPurple,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            if (student.courseName.isNotBlank() && !student.courseName.equals(currentClass.name, ignoreCase = true)) {
+                                Text(
+                                    text = student.courseName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
@@ -177,6 +197,7 @@ fun ProfileScreen(
                                 )
                             }
                         }
+
                     }
 
                     Spacer(modifier = Modifier.height(22.dp))
@@ -350,8 +371,8 @@ fun ProfileScreen(
                         iconBgLight = Color(0xFFEEEAFE),
                         iconTint = PrimaryPurple,
                         isDarkTheme = isDarkTheme,
-                        title = "Switch Class",
-                        subtitle = "Change your enrolled class",
+                        title = "Switch Course",
+                        subtitle = "Change your enrolled course",
                         onClick = onSwitchClassClick
                     )
 
@@ -374,75 +395,56 @@ fun ProfileScreen(
                         subtitle = "FAQs and contact support",
                         onClick = onHelpClick
                     )
-
-                    ProfileMenuRow(
-                        icon = Icons.Default.Logout,
-                        iconBgLight = Color(0xFFFEECEC),
-                        iconTint = ErrorRed,
-                        isDarkTheme = isDarkTheme,
-                        title = "Logout",
-                        subtitle = "Sign out from this device",
-                        isDestructive = true,
-                        onClick = { showLogoutDialog = true }
-                    )
-
-                    ProfileMenuRow(
-                        icon = Icons.Default.DeleteForever,
-                        iconBgLight = Color(0xFFFFF1F1),
-                        iconTint = ErrorRed,
-                        isDarkTheme = isDarkTheme,
-                        title = "Delete Account",
-                        subtitle = "Permanently delete your profile and account",
-                        isDestructive = true,
-                        onClick = { showDeleteAccountDialog = true }
-                    )
                 }
             }
         }
     }
     }
 
-    if (showLogoutDialog) {
+    if (showEditNameDialog) {
         AlertDialog(
-            onDismissRequest = { showLogoutDialog = false },
-            title = { Text("Logout?", fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to sign out from MCQ Test Series?") },
+            onDismissRequest = { showEditNameDialog = false },
+            title = {
+                Text(
+                    text = "Edit Profile Name",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter your name as you want it to appear on your certificates and leaderboards:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = editedNameText,
+                        onValueChange = { editedNameText = it },
+                        label = { Text("Full Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
-                        showLogoutDialog = false
-                        onLogoutClick()
-                    }
+                        if (editedNameText.isNotBlank()) {
+                            onUpdateProfileName?.invoke(editedNameText.trim())
+                        }
+                        showEditNameDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
                 ) {
-                    Text("Logout", color = ErrorRed, fontWeight = FontWeight.Bold)
+                    Text("Save Name", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showLogoutDialog = false }) {
-                    Text("Cancel", fontWeight = FontWeight.SemiBold)
-                }
-            }
-        )
-    }
-
-    if (showDeleteAccountDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteAccountDialog = false },
-            title = { Text("Delete Account?", fontWeight = FontWeight.Bold) },
-            text = { Text("Your account and personal information will be permanently deleted. This action cannot be undone.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDeleteAccountDialog = false
-                        onDeleteAccountClick()
-                    }
-                ) {
-                    Text("Delete Account", color = ErrorRed, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteAccountDialog = false }) {
-                    Text("Cancel", fontWeight = FontWeight.SemiBold)
+                OutlinedButton(onClick = { showEditNameDialog = false }) {
+                    Text("Cancel")
                 }
             }
         )

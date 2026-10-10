@@ -41,10 +41,6 @@ class AppViewModel(
 
     constructor(application: Application) : this(application, AppRepository.getInstance())
 
-    init {
-        com.example.data.supabase.SupabaseAuthStorage.init(application.applicationContext)
-    }
-
     private val networkMonitor = NetworkMonitor.getInstance(application)
     val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
 
@@ -57,7 +53,6 @@ class AppViewModel(
     val activeAttempt: StateFlow<Attempt?> = repository.activeAttempt
     val latestResult: StateFlow<TestResult?> = repository.latestResult
 
-    val authState: StateFlow<com.example.data.supabase.AuthState> = repository.authState
     val isAuthenticated: StateFlow<Boolean> = repository.isAuthenticated
 
     // Dynamic Supabase flows (Requirement 1 & 11)
@@ -144,12 +139,16 @@ class AppViewModel(
         }
 
         // Continuous live ticking timer to next midnight 12:00:00 AM IST
-        viewModelScope.launch {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            var tickCount = 0
             while (true) {
                 val millis = DailyTestTimeUtils.getMillisUntilMidnightIST()
                 _dailyCountdown.value = DailyTestTimeUtils.formatCountdown(millis)
-                repository.checkDailyMidnightReset()
-                repository.checkMonthlyReset()
+                if (tickCount % 30 == 0) {
+                    repository.checkDailyMidnightReset()
+                    repository.checkMonthlyReset()
+                }
+                tickCount++
                 delay(1000)
             }
         }
@@ -210,40 +209,32 @@ class AppViewModel(
         return repository.checkSession()
     }
 
-    suspend fun login(email: String, password: String): Result<Student> {
-        return repository.login(email, password)
+    fun selectCourseAndClass(courseName: String, classId: String, className: String) {
+        repository.selectCourseAndClass(courseName, classId, className)
     }
 
-    suspend fun loginWithGoogle(idToken: String, nonce: String? = null, fallbackName: String? = null): Result<Student> {
-        return repository.loginWithGoogle(idToken, nonce, fallbackName)
+    fun saveInitialProfile(name: String, courseName: String, classId: String, className: String) {
+        repository.saveInitialProfile(name, courseName, classId, className)
     }
 
-    suspend fun register(fullName: String, email: String, password: String): Result<com.example.data.supabase.RegistrationResult> {
-        return repository.register(fullName, email, password)
+    fun updateProfileName(name: String) {
+        repository.updateProfileName(name)
     }
 
-    suspend fun resetPassword(email: String): Result<String> {
-        return repository.resetPassword(email)
+    suspend fun getOrGenerateDailyRollNo(customStudentName: String? = null): String {
+        return repository.getOrGenerateDailyRollNo(customStudentName)
     }
 
-    suspend fun verifyRecoveryOtp(email: String, token: String): Result<com.example.data.supabase.SupabaseSession> {
-        return repository.verifyRecoveryOtp(email, token)
+    fun hasAttemptedDailyTestToday(): Boolean {
+        val todayKey = repository.dailyDateKey.value
+        val prefs = com.example.util.UserPreferences.getInstanceOrNull()
+        return prefs?.hasAttemptedDailyTestToday(todayKey) == true
     }
 
-    suspend fun resetPasswordWithOtp(email: String, token: String, newPassword: String): Result<Boolean> {
-        return repository.resetPasswordWithOtp(email, token, newPassword)
-    }
-
-    suspend fun updatePassword(newPassword: String, token: String? = null): Result<Boolean> {
-        return repository.updatePassword(newPassword, token)
-    }
-
-    suspend fun logout(): Result<Boolean> {
-        return repository.logout()
-    }
-
-    suspend fun deleteAccount(): Result<Boolean> {
-        return repository.deleteAccount()
+    fun getDailyAttemptDetails(): com.example.util.DailySavedAttemptDetails? {
+        val todayKey = repository.dailyDateKey.value
+        val prefs = com.example.util.UserPreferences.getInstanceOrNull()
+        return prefs?.getDailyAttemptDetails(todayKey)
     }
 
     fun resetDailySessionForTesting(forceNewDateKey: String? = null) {

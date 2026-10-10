@@ -9,10 +9,10 @@ import java.util.TimeZone
 object DailyTestTimeUtils {
 
     const val TIMEZONE_IST = "Asia/Kolkata"
-    const val APP_WEBSITE_URL = "https://ais-dev-55slwb6x7lchjgdcamzjoj-28282744572.asia-east1.run.app"
-    const val YOUTUBE_URL = "https://youtube.com/@mcqtestseries"
-    const val TELEGRAM_URL = "https://t.me/mcqtestseries"
-    const val INSTAGRAM_URL = "https://instagram.com/mcqtestseries"
+    const val APP_WEBSITE_URL = ""
+    const val YOUTUBE_URL = ""
+    const val TELEGRAM_URL = ""
+    const val INSTAGRAM_URL = ""
 
     val istTimeZone: TimeZone = TimeZone.getTimeZone(TIMEZONE_IST)
 
@@ -96,5 +96,20 @@ object DailyTestTimeUtils {
         // Sunday is 1 in Calendar -> offset 0, Monday 2 -> offset 1, etc.
         return cal.get(Calendar.DAY_OF_WEEK) - 1
     }
+
+    /**
+     * Generates a temporary daily test roll number for participants.
+     * Format: "YYMMDDNNNN"
+     * Example: "2610090001"
+     */
+    fun generateTemporaryRollNo(dateKey: String = getCurrentDateKey(), sequenceNumber: Int = 1): String {
+        val parts = dateKey.split("-")
+        val yy = if (parts.isNotEmpty() && parts[0].length >= 4) parts[0].substring(2, 4) else "26"
+        val mm = if (parts.size >= 2) parts[1].padStart(2, '0') else "10"
+        val dd = if (parts.size >= 3) parts[2].padStart(2, '0') else "09"
+        val seqStr = String.format(Locale.US, "%04d", sequenceNumber.coerceAtLeast(1))
+        return "$yy$mm$dd$seqStr"
+    }
 }
+
 

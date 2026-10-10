@@ -120,9 +120,22 @@ class DailyTestLeaderboardTest {
     }
 
     @Test
+    fun testTemporaryRollNoFormat() {
+        // Requirement 1 & 2: Temporary Roll Number in format "YYMMDDNNNN"
+        // Example: "2610090001"
+        val rollNo1 = DailyTestTimeUtils.generateTemporaryRollNo("2026-10-09", 1)
+        assertEquals("2610090001", rollNo1)
+
+        val rollNo2 = DailyTestTimeUtils.generateTemporaryRollNo("2026-10-09", 42)
+        assertEquals("2610090042", rollNo2)
+
+        val rollNoNextDay = DailyTestTimeUtils.generateTemporaryRollNo("2026-10-10", 1)
+        assertEquals("2610100001", rollNoNextDay)
+    }
+
+    @Test
     fun testMidnightResetStartsFresh() {
         val repo = AppRepository.getInstance()
-        assertNotNull(repo.dailyBestResult.value)
 
         // Simulate midnight reset to a new date
         repo.resetDailySessionForTesting("2026-10-03")

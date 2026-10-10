@@ -36,23 +36,28 @@ import java.util.concurrent.ConcurrentHashMap
 class AppRepository private constructor() {
 
     private val supabaseDataSource: SupabaseDataSource = SupabaseDataSource()
-    private val authManager: com.example.data.supabase.SupabaseAuthManager = com.example.data.supabase.SupabaseAuthManager.getInstance()
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private val _student = MutableStateFlow(
-        Student(
-            id = "",
-            name = "",
-            email = "",
-            selectedClassId = "class_10"
-        )
-    )
+    private fun loadInitialStudent(): Student {
+        val prefs = com.example.util.UserPreferences.getInstanceOrNull()
+        return if (prefs != null && prefs.isProfileCompleted()) {
+            prefs.loadStudent()
+        } else {
+            Student(
+                id = prefs?.getStudentId() ?: "std_user",
+                name = prefs?.getStudentName()?.takeIf { it.isNotBlank() && it != "Student" } ?: "",
+                email = "",
+                selectedClassId = prefs?.getSelectedClassId() ?: "class_10",
+                courseName = prefs?.getCourseName() ?: "Class 10"
+            )
+        }
+    }
+
+    private val _student = MutableStateFlow(loadInitialStudent())
     val student: StateFlow<Student> = _student.asStateFlow()
 
     private val _isAuthenticated = MutableStateFlow(false)
     val isAuthenticated: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
-
-    val authState: StateFlow<com.example.data.supabase.AuthState> = authManager.authState
 
     // Database-driven collections backed by Supabase PostgREST
     private val _classes = MutableStateFlow<List<ClassData>>(MockDataSource.classes)
@@ -147,11 +152,17 @@ class AppRepository private constructor() {
     val monthlyStreakState: StateFlow<MonthlyStreakState> = _monthlyStreakState.asStateFlow()
 
     init {
+        val todayKey = DailyTestTimeUtils.getCurrentDateKey()
+        com.example.util.UserPreferences.getInstanceOrNull()?.resetDailyStateIfNewDay(todayKey)
+
         // Sync initial streak calculation (Device-local)
         recalculateMonthlyStreakState()
 
         // Automatically sync fresh dynamic content from Supabase
         syncFromSupabase()
+
+        // Check daily eligibility immediately for today's date
+        checkDailyEligibility()
 
         // Connect Supabase Realtime for live Leaderboard & Tests
         setupRealtime()
@@ -413,16 +424,27 @@ class AppRepository private constructor() {
 
     fun checkDailyMidnightReset(): Boolean {
         val todayKey = DailyTestTimeUtils.getCurrentDateKey()
+        com.example.util.UserPreferences.getInstanceOrNull()?.resetDailyStateIfNewDay(todayKey)
+
         if (_dailyDateKey.value != todayKey) {
             _dailyDateKey.value = todayKey
             _dailyAttempts.value = emptyList()
             _dailyBestResult.value = null
+            _dailyEligibility.value = com.example.model.DailyEligibilityResult(isEligible = true)
+            _student.update { it.copy(currentDailyRollNo = null) }
             repositoryScope.launch {
-                val res = supabaseDataSource.fetchLeaderboard(todayKey)
+                try {
+                    supabaseDataSource.resetDailyParticipants(todayKey)
+                } catch (e: Exception) {
+                    Log.w("AppRepository", "resetDailyParticipants error: ${e.message}")
+                }
+                val selectedClass = getSelectedClass()
+                val res = supabaseDataSource.fetchLeaderboard(todayKey, selectedClass.name)
                 if (res.isSuccess) {
                     _dailyPeerList.value = res.getOrThrow()
                     recalculateDailyLeaderboard()
                 }
+                checkDailyEligibility()
             }
             return true
         }
@@ -450,9 +472,18 @@ class AppRepository private constructor() {
         val best = _dailyBestResult.value
 
         val allEntries = mutableListOf<DailyLeaderboardEntry>()
+        val userRollNo = best?.rollNo
+            ?: _student.value.currentDailyRollNo
+            ?: com.example.util.UserPreferences.getInstanceOrNull()?.getTodayRollNo(todayKey)
+        val currentUserId = _student.value.id
+        val currentUserName = _student.value.name.trim()
 
         peers.forEach { peer ->
-            if (peer.studentId != _student.value.id) {
+            val isUserPeer = (peer.studentId == currentUserId) ||
+                (!userRollNo.isNullOrBlank() && !peer.rollNo.isNullOrBlank() && peer.rollNo == userRollNo) ||
+                (currentUserName.isNotBlank() && currentUserName != "Student" && peer.studentName.equals(currentUserName, ignoreCase = true))
+
+            if (!isUserPeer) {
                 allEntries.add(peer)
             }
         }
@@ -474,15 +505,35 @@ class AppRepository private constructor() {
                     completionTimeSeconds = best.bestCompletionTimeSeconds,
                     isCurrentUser = true,
                     attemptsCount = best.attemptsCount,
-                    avatarInitials = if (userInitials.isNotEmpty()) userInitials else "RS"
+                    avatarInitials = if (userInitials.isNotEmpty()) userInitials else "RS",
+                    rollNo = userRollNo
                 )
             )
+        }
+
+        // Deduplicate allEntries: Guarantee that NO duplicate roll numbers or student IDs exist
+        val deduplicated = mutableListOf<DailyLeaderboardEntry>()
+        for (item in allEntries) {
+            val existingIndex = deduplicated.indexOfFirst { existing ->
+                (!item.rollNo.isNullOrBlank() && !existing.rollNo.isNullOrBlank() && item.rollNo == existing.rollNo) ||
+                (item.studentId.isNotBlank() && item.studentId == existing.studentId)
+            }
+            if (existingIndex < 0) {
+                deduplicated.add(item)
+            } else {
+                val existing = deduplicated[existingIndex]
+                if (item.isCurrentUser) {
+                    deduplicated[existingIndex] = item
+                } else if (!existing.isCurrentUser && (item.score > existing.score || (item.score == existing.score && item.completionTimeSeconds < existing.completionTimeSeconds))) {
+                    deduplicated[existingIndex] = item
+                }
+            }
         }
 
         // Priority 1: Highest Score (descending)
         // Priority 2: Fastest Completion Time (ascending)
         // Priority 3: Stable Tie-breaker (studentId ascending)
-        val sorted = allEntries.sortedWith(
+        val sorted = deduplicated.sortedWith(
             compareByDescending<DailyLeaderboardEntry> { it.score }
                 .thenBy { it.completionTimeSeconds }
                 .thenBy { it.studentId }
@@ -511,7 +562,7 @@ class AppRepository private constructor() {
             displayDate = DailyTestTimeUtils.getFormattedDisplayDate(todayKey),
             countdownToMidnight = DailyTestTimeUtils.formatCountdown(DailyTestTimeUtils.getMillisUntilMidnightIST()),
             totalParticipants = totalParticipants,
-            top100 = ranked.take(100),
+            top100 = ranked,
             currentUserBest = _dailyBestResult.value,
             currentUserRank = userRank,
             studentsAhead = ahead,
@@ -524,149 +575,10 @@ class AppRepository private constructor() {
     }
 
     /**
-     * Checks and restores authenticated Supabase Auth session.
-     * Supabase Auth is the ONLY authentication authority.
+     * Checks if there is an active session. Always returns false as registration/authentication is disabled.
      */
     suspend fun checkSession(): Boolean {
-        val session = authManager.restoreSession()
-        if (session != null) {
-            val user = session.user
-            _student.update { current ->
-                current.copy(
-                    id = user.id,
-                    name = user.fullName.ifBlank { current.name.ifBlank { "Student" } },
-                    email = user.email
-                )
-            }
-            _isAuthenticated.value = true
-            return true
-        } else {
-            _isAuthenticated.value = false
-            return false
-        }
-    }
-
-    /**
-     * Signs in using Supabase Auth (Email + Password).
-     */
-    suspend fun login(email: String, password: String): Result<Student> {
-        val result = authManager.signIn(email, password)
-        return if (result.isSuccess) {
-            val session = result.getOrThrow()
-            val user = session.user
-            val updated = _student.value.copy(
-                id = user.id,
-                name = user.fullName.ifBlank { "Student" },
-                email = user.email
-            )
-            _student.value = updated
-            _isAuthenticated.value = true
-            // Load user data for selected class
-            syncFromSupabase()
-            Result.success(updated)
-        } else {
-            _isAuthenticated.value = false
-            Result.failure(result.exceptionOrNull() ?: Exception("Authentication failed"))
-        }
-    }
-
-    /**
-     * Signs in using Google via Credential Manager and Supabase Auth.
-     */
-    suspend fun loginWithGoogle(idToken: String, nonce: String? = null, fallbackName: String? = null): Result<Student> {
-        val result = authManager.signInWithGoogleIdToken(idToken, nonce)
-        return if (result.isSuccess) {
-            val session = result.getOrThrow()
-            val user = session.user
-            val updated = _student.value.copy(
-                id = user.id,
-                name = user.fullName.ifBlank { fallbackName ?: "Student" },
-                email = user.email
-            )
-            _student.value = updated
-            _isAuthenticated.value = true
-            syncFromSupabase()
-            Result.success(updated)
-        } else {
-            _isAuthenticated.value = false
-            Result.failure(result.exceptionOrNull() ?: Exception("Google Authentication failed"))
-        }
-    }
-
-    /**
-     * Registers a new account via Supabase Auth (Email + Password).
-     */
-    suspend fun register(fullName: String, email: String, password: String): Result<com.example.data.supabase.RegistrationResult> {
-        val result = authManager.signUp(email, password, fullName)
-        return if (result.isSuccess) {
-            val regRes = result.getOrThrow()
-            if (regRes.session != null) {
-                val user = regRes.user ?: regRes.session.user
-                val updated = _student.value.copy(
-                    id = user.id,
-                    name = user.fullName.ifBlank { fullName },
-                    email = user.email
-                )
-                _student.value = updated
-                _isAuthenticated.value = true
-                syncFromSupabase()
-            }
-            Result.success(regRes)
-        } else {
-            Result.failure(result.exceptionOrNull() ?: Exception("Registration failed"))
-        }
-    }
-
-    /**
-     * Sends password recovery email via Supabase Auth.
-     */
-    suspend fun resetPassword(email: String): Result<String> {
-        return authManager.sendPasswordRecovery(email)
-    }
-
-    /**
-     * Verifies OTP code sent to user email.
-     */
-    suspend fun verifyRecoveryOtp(email: String, token: String): Result<com.example.data.supabase.SupabaseSession> {
-        return authManager.verifyRecoveryOtp(email, token)
-    }
-
-    /**
-     * Resets password using OTP code and sets new password.
-     */
-    suspend fun resetPasswordWithOtp(email: String, token: String, newPassword: String): Result<Boolean> {
-        return authManager.resetPasswordWithOtp(email, token, newPassword)
-    }
-
-    /**
-     * Updates password via Supabase Auth.
-     */
-    suspend fun updatePassword(newPassword: String, token: String? = null): Result<Boolean> {
-        return authManager.updatePassword(newPassword, token)
-    }
-
-    /**
-     * Signs out the user from Supabase Auth and clears session.
-     */
-    suspend fun logout(): Result<Boolean> {
-        val result = authManager.signOut()
-        _isAuthenticated.value = false
-        _student.value = Student(selectedClassId = _student.value.selectedClassId)
-        _dailyAttempts.value = emptyList()
-        _dailyBestResult.value = null
-        return result
-    }
-
-    /**
-     * Securely deletes user account and logs out.
-     */
-    suspend fun deleteAccount(): Result<Boolean> {
-        val result = authManager.deleteAccount()
-        _isAuthenticated.value = false
-        _student.value = Student(selectedClassId = _student.value.selectedClassId)
-        _dailyAttempts.value = emptyList()
-        _dailyBestResult.value = null
-        return result
+        return false
     }
 
     fun setDarkTheme(enabled: Boolean) {
@@ -683,7 +595,13 @@ class AppRepository private constructor() {
     }
 
     fun switchClass(classId: String) {
-        _student.update { it.copy(selectedClassId = classId) }
+        val foundClass = _classes.value.find { it.id == classId }
+        val courseName = foundClass?.name ?: _student.value.courseName
+        val className = foundClass?.name ?: "Class 10"
+
+        _student.update { it.copy(selectedClassId = classId, courseName = courseName) }
+        com.example.util.UserPreferences.getInstanceOrNull()?.updateClass(courseName, classId, className)
+
         val localSubs = MockDataSource.subjectsByClass[classId]
         if (!localSubs.isNullOrEmpty()) {
             _subjects.value = localSubs
@@ -708,6 +626,83 @@ class AppRepository private constructor() {
             // Refresh leaderboard strictly for the new Course+Class
             refreshLeaderboard(targetClass.name)
         }
+    }
+
+    fun selectCourseAndClass(courseName: String, classId: String, className: String) {
+        val prefs = com.example.util.UserPreferences.getInstanceOrNull()
+        prefs?.saveCourseAndClass(courseName, classId, className)
+        val studentId = prefs?.getStudentId() ?: "std_${System.currentTimeMillis()}"
+        _student.update {
+            it.copy(
+                id = studentId,
+                courseName = courseName.trim(),
+                selectedClassId = classId.trim()
+            )
+        }
+        switchClass(classId)
+    }
+
+    fun saveInitialProfile(name: String, courseName: String, classId: String, className: String) {
+        val prefs = com.example.util.UserPreferences.getInstanceOrNull()
+        prefs?.saveProfile(name, courseName, classId, className)
+        val studentId = prefs?.getStudentId() ?: "std_${System.currentTimeMillis()}"
+        _student.update {
+            it.copy(
+                id = studentId,
+                name = name.trim(),
+                courseName = courseName.trim(),
+                selectedClassId = classId.trim()
+            )
+        }
+        switchClass(classId)
+    }
+
+    fun updateProfileName(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        val prefs = com.example.util.UserPreferences.getInstanceOrNull()
+        prefs?.saveStudentName(trimmed)
+        _student.update { it.copy(name = trimmed) }
+        refreshLeaderboard()
+    }
+
+    suspend fun getOrGenerateDailyRollNo(customStudentName: String? = null): String {
+        val todayKey = _dailyDateKey.value
+        val prefs = com.example.util.UserPreferences.getInstanceOrNull()
+        val savedRoll = prefs?.getTodayRollNo(todayKey)
+        if (!savedRoll.isNullOrBlank()) {
+            _student.update { it.copy(currentDailyRollNo = savedRoll) }
+            return savedRoll
+        }
+
+        if (!customStudentName.isNullOrBlank()) {
+            val trimmed = customStudentName.trim()
+            _student.update { it.copy(name = trimmed) }
+            prefs?.saveStudentName(trimmed)
+        }
+
+        val studentName = _student.value.name.ifBlank { prefs?.getStudentName() ?: "Student" }
+        val courseName = _student.value.courseName
+        val className = getSelectedClass().name
+        val studentId = _student.value.id
+
+        val rpcRes = supabaseDataSource.getOrCreateDailyRollNo(
+            studentId = studentId,
+            studentName = studentName,
+            courseName = courseName,
+            className = className,
+            dateKey = todayKey
+        )
+
+        val rollNo = if (rpcRes.isSuccess) {
+            rpcRes.getOrThrow().rollNo
+        } else {
+            com.example.util.DailyTestTimeUtils.generateTemporaryRollNo(todayKey, 1)
+        }
+
+        prefs?.saveTodayRollNo(todayKey, rollNo)
+        _student.update { it.copy(currentDailyRollNo = rollNo) }
+        return rollNo
     }
 
     fun getSubjects(): List<Subject> = _subjects.value
@@ -1057,6 +1052,31 @@ class AppRepository private constructor() {
             val todayAttempts = _dailyAttempts.value.filter { it.dateKey == todayKey }
             val attemptNumber = todayAttempts.size + 1
 
+            val prefs = com.example.util.UserPreferences.getInstanceOrNull()
+            val currentRollNo = _student.value.currentDailyRollNo
+                ?: prefs?.getTodayRollNo(todayKey)
+                ?: com.example.util.DailyTestTimeUtils.generateTemporaryRollNo(todayKey, 1)
+
+            prefs?.markDailyTestAttempted(
+                dateKey = todayKey,
+                rollNo = currentRollNo,
+                attemptedCourse = _student.value.courseName,
+                attemptedClass = getSelectedClass().name,
+                score = safeScore,
+                totalMarks = test.totalMarks
+            )
+
+            _dailyEligibility.value = com.example.model.DailyEligibilityResult(
+                isEligible = false,
+                reason = "You have already completed today's Daily Test (Roll No: $currentRollNo). Students can attempt only once per day across all courses.",
+                attemptedClassId = getSelectedClass().id,
+                attemptedClassName = "${_student.value.courseName} • ${getSelectedClass().name}",
+                attemptsCount = 1,
+                previousAttemptRollNo = currentRollNo,
+                previousAttemptScore = safeScore,
+                previousAttemptTotalMarks = test.totalMarks
+            )
+
             val dailyAttempt = DailyTestAttempt(
                 id = "daily_att_${System.currentTimeMillis()}",
                 testId = test.id,
@@ -1070,7 +1090,8 @@ class AppRepository private constructor() {
                 wrongCount = wrongCount,
                 notAttemptedCount = notAttemptedCount,
                 completionTimeSeconds = timeTaken,
-                submittedAtEpoch = System.currentTimeMillis()
+                submittedAtEpoch = System.currentTimeMillis(),
+                rollNo = currentRollNo
             )
             _dailyAttempts.update { it + dailyAttempt }
 
@@ -1096,11 +1117,12 @@ class AppRepository private constructor() {
                     attemptsCount = attemptNumber,
                     correctCount = correctCount,
                     wrongCount = wrongCount,
+                    rollNo = currentRollNo,
                     updatedAtEpoch = System.currentTimeMillis()
                 )
             } else {
                 currentBest?.let {
-                    _dailyBestResult.value = it.copy(attemptsCount = attemptNumber)
+                    _dailyBestResult.value = it.copy(attemptsCount = attemptNumber, rollNo = currentRollNo)
                 }
             }
 
@@ -1108,10 +1130,11 @@ class AppRepository private constructor() {
             val finalRank = _dailyBestResult.value?.rank ?: 1
             recordDailyTestCompletion(safeScore, test.totalMarks, finalRank)
 
-            // Submit result to Supabase shared leaderboard asynchronously (Rules 9, 13)
+            // Submit result to Supabase shared leaderboard asynchronously
             val studentId = _student.value.id
             val studentName = _student.value.name
             val studentClass = getSelectedClass().name
+            val courseName = _student.value.courseName
             repositoryScope.launch {
                 supabaseDataSource.submitLeaderboardEntry(
                     studentId = studentId,
@@ -1121,11 +1144,17 @@ class AppRepository private constructor() {
                     score = safeScore,
                     totalMarks = test.totalMarks,
                     completionTimeSeconds = timeTaken,
-                    attemptsCount = attemptNumber
+                    attemptsCount = attemptNumber,
+                    rollNo = currentRollNo,
+                    courseName = courseName
                 )
                 refreshLeaderboard(studentClass)
                 checkDailyEligibility()
             }
+
+            val finalResultWithRoll = result.copy(rollNo = currentRollNo)
+            _latestResult.value = finalResultWithRoll
+            return finalResultWithRoll
         }
 
         return result

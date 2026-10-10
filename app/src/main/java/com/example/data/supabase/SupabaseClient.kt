@@ -29,6 +29,9 @@ class SupabaseClient private constructor() {
      * Executes a GET request against the Supabase PostgREST endpoint.
      */
     suspend fun get(tableOrEndpoint: String, queryParams: String = ""): Result<String> = withContext(Dispatchers.IO) {
+        if (!SupabaseConfig.isConfigured) {
+            return@withContext Result.failure(IllegalStateException("Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY in Secrets or .env"))
+        }
         try {
             val url = buildUrl(tableOrEndpoint, queryParams)
             val request = Request.Builder()
@@ -58,6 +61,9 @@ class SupabaseClient private constructor() {
      * Executes a POST request against the Supabase PostgREST endpoint (e.g. insert rows).
      */
     suspend fun post(tableOrEndpoint: String, jsonPayload: String): Result<String> = withContext(Dispatchers.IO) {
+        if (!SupabaseConfig.isConfigured) {
+            return@withContext Result.failure(IllegalStateException("Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY in Secrets or .env"))
+        }
         try {
             val url = buildUrl(tableOrEndpoint, "")
             val requestBody = jsonPayload.toRequestBody(jsonMediaType)
@@ -87,6 +93,44 @@ class SupabaseClient private constructor() {
     }
 
     /**
+     * Executes a PATCH request against the Supabase PostgREST endpoint (e.g. update rows).
+     */
+    suspend fun patch(
+        tableOrEndpoint: String,
+        queryParams: String,
+        jsonPayload: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        if (!SupabaseConfig.isConfigured) {
+            return@withContext Result.failure(IllegalStateException("Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY in Secrets or .env"))
+        }
+        try {
+            val url = buildUrl(tableOrEndpoint, queryParams)
+            val requestBody = jsonPayload.toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url(url)
+                .header("apikey", SupabaseConfig.anonKey)
+                .header("Authorization", "Bearer ${SupabaseConfig.anonKey}")
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .patch(requestBody)
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful) {
+                    Result.success(body)
+                } else {
+                    Log.w(TAG, "PATCH $tableOrEndpoint failed with HTTP ${response.code}: $body")
+                    Result.failure(IOException("Supabase HTTP ${response.code}: $body"))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "PATCH $tableOrEndpoint exception: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Executes a DELETE request against the Supabase PostgREST endpoint (e.g. remove user data rows).
      */
     suspend fun delete(
@@ -94,6 +138,10 @@ class SupabaseClient private constructor() {
         queryParams: String,
         userToken: String? = null
     ): Result<String> = withContext(Dispatchers.IO) {
+        if (!SupabaseConfig.isConfigured) {
+            return@withContext Result.failure(IllegalStateException("Supabase is not configured. Please set SUPABASE_URL and SUPABASE_ANON_KEY in Secrets or .env"))
+        }
+
         try {
             val url = buildUrl(tableOrEndpoint, queryParams)
             val authHeader = if (!userToken.isNullOrBlank()) "Bearer $userToken" else "Bearer ${SupabaseConfig.anonKey}"

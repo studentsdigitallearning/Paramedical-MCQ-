@@ -298,7 +298,7 @@ fun CertificateDialog(
 
                         // Footer note in Certificate
                         Text(
-                            text = "Generated from MCQ Test Series App",
+                            text = "Generated from JAC MCQ Master App",
                             fontSize = 8.5.sp,
                             color = PrimaryPurple,
                             fontWeight = FontWeight.Bold

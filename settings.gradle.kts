@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "MCQ Test Series"
+rootProject.name = "JAC MCQ Master"
 
 include(":app")

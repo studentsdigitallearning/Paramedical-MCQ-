@@ -337,7 +337,7 @@ object CertificateGenerator {
         canvas.drawText("PARTICIPANT", sealX, sealY + 5f, textPaint)
         canvas.drawText("DAILY TEST", sealX, sealY + 14f, textPaint)
 
-        // Left Side of Footer: "Generated from MCQ Test Series App"
+        // Left Side of Footer: "Generated from JAC MCQ Master App"
         textPaint.apply {
             textAlign = Paint.Align.LEFT
             color = Color.parseColor("#4C1D95")
@@ -345,7 +345,7 @@ object CertificateGenerator {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             letterSpacing = 0.02f
         }
-        canvas.drawText("Generated from MCQ Test Series App", 55f, footerDividerY + 28f, textPaint)
+        canvas.drawText("Generated from JAC MCQ Master App", 55f, footerDividerY + 28f, textPaint)
 
         textPaint.apply {
             color = Color.parseColor("#64748B")
@@ -417,7 +417,7 @@ object CertificateGenerator {
             )
             putExtra(
                 Intent.EXTRA_TEXT,
-                "Here is my Certificate of Participation for securing Rank #$rank in today's Daily MCQ Challenge!\nGenerated from MCQ Test Series App\n${DailyTestTimeUtils.APP_WEBSITE_URL}"
+                "Here is my Certificate of Participation for securing Rank #$rank in today's Daily MCQ Challenge!\nGenerated from JAC MCQ Master App\n${DailyTestTimeUtils.APP_WEBSITE_URL}"
             )
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }

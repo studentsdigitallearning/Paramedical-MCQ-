@@ -1,50 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-
-    <!-- Graduation cap mortarboard -->
-    <path
-        android:fillColor="#FFC726"
-        android:pathData="M54,28 L82,40 L54,50 L26,40 Z" />
-
-    <!-- Cap lower skull cap band -->
-    <path
-        android:fillColor="#E0A710"
-        android:pathData="M38,46 L38,55 C38,62 70,62 70,55 L70,46 C65,49 59,51 54,51 C49,51 43,49 38,46 Z" />
-
-    <!-- Tassel string and pendant -->
-    <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="2"
-        android:strokeLineCap="round"
-        android:pathData="M76,43 L80,56" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M78,56 L82,56 L83,64 L77,64 Z" />
-
-    <!-- Open Book base -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M27,62 C34,60 44,61 53,65 L53,81 C44,77 34,76 27,78 Z" />
-    <path
-        android:fillColor="#E6ECFA"
-        android:pathData="M81,62 C74,60 64,61 55,65 L55,81 C64,77 74,76 81,78 Z" />
-    <!-- Book Spine -->
-    <path
-        android:fillColor="#B794F6"
-        android:pathData="M53,65 L55,65 L55,82 L53,82 Z" />
-
-    <!-- Checkmark Badge in center -->
-    <path
-        android:fillColor="#48BB78"
-        android:pathData="M54,67 A7,7 0 1 0 54,81 A7,7 0 1 0 54,67 Z" />
-    <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M51.5,74 L53.5,76 L57,71.5" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="66dp"
+        android:height="66dp"
+        android:drawable="@drawable/app_logo"
+        android:gravity="center" />
+</layer-list>

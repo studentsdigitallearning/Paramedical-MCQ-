@@ -172,7 +172,11 @@ fun SubjectWiseScreen(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                items(filteredSubjects) { subject ->
+                items(
+                    items = filteredSubjects,
+                    key = { it.id },
+                    contentType = { "subject_item" }
+                ) { subject ->
                     SubjectCard(
                         subject = subject,
                         onClick = { onSubjectClick(subject) }

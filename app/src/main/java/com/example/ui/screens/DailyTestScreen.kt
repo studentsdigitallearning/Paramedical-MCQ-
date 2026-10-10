@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,21 +23,31 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.example.model.ClassData
 import com.example.model.DailyBestResult
 import com.example.model.DailyEligibilityResult
@@ -69,13 +81,41 @@ fun DailyTestScreen(
     currentClass: ClassData,
     dailyCountdown: String,
     eligibility: DailyEligibilityResult = DailyEligibilityResult(isEligible = true),
+    hasAttemptedToday: Boolean = false,
+    savedAttemptDetails: com.example.util.DailySavedAttemptDetails? = null,
     attemptsToday: List<DailyTestAttempt> = emptyList(),
     bestResult: DailyBestResult? = null,
+    studentName: String = "",
+    courseName: String = "",
+    currentRollNo: String? = null,
     isDarkTheme: Boolean = false,
     isLoading: Boolean = false,
+    onRequestRollNumber: (suspend () -> String)? = null,
+    onUpdateStudentName: ((String) -> Unit)? = null,
     onStartDailyTestClick: (Test) -> Unit,
+    onViewResultClick: (() -> Unit)? = null,
     onBackClick: (() -> Unit)? = null
 ) {
+    val isAlreadyAttempted = !eligibility.isEligible || hasAttemptedToday || attemptsToday.isNotEmpty()
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    var resolvedRollNo by androidx.compose.runtime.remember(currentRollNo) {
+        androidx.compose.runtime.mutableStateOf(currentRollNo ?: "")
+    }
+
+    val effectiveRollNo = resolvedRollNo.ifBlank {
+        currentRollNo ?: ""
+    }
+
+    var showRegistrationDialog by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    var registrationNameInput by androidx.compose.runtime.remember(studentName) {
+        androidx.compose.runtime.mutableStateOf(if (studentName.equals("Student", ignoreCase = true)) "" else studentName)
+    }
+    var registrationNameError by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -92,8 +132,24 @@ fun DailyTestScreen(
             com.example.ui.components.DailyTestSkeleton(
                 modifier = Modifier.fillMaxSize()
             )
-        } else if (!eligibility.isEligible) {
-            // Rules 5 & 6: Student already attempted today's daily test in another course/class
+        } else if (isAlreadyAttempted) {
+            // One Daily Test Attempt Per Day across all courses
+            val displayRollNo = eligibility.previousAttemptRollNo
+                ?: savedAttemptDetails?.rollNo
+                ?: bestResult?.rollNo
+                ?: ""
+            val displayScore = eligibility.previousAttemptScore
+                ?: savedAttemptDetails?.score
+                ?: bestResult?.bestScore
+                ?: 0f
+            val displayTotal = eligibility.previousAttemptTotalMarks
+                ?: savedAttemptDetails?.totalMarks
+                ?: dailyTest?.totalMarks
+                ?: 50f
+            val displayCourseClass = eligibility.attemptedClassName
+                ?: savedAttemptDetails?.let { "${it.courseName} • ${it.className}" }
+                ?: currentClass.name
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
@@ -101,47 +157,47 @@ fun DailyTestScreen(
                 verticalArrangement = Arrangement.Center
             ) {
                 item {
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Box(
                         modifier = Modifier
                             .size(90.dp)
                             .clip(CircleShape)
-                            .background(ErrorRed.copy(alpha = 0.12f))
-                            .border(1.5.dp, ErrorRed.copy(alpha = 0.35f), CircleShape),
+                            .background(SuccessGreen.copy(alpha = 0.12f))
+                            .border(1.5.dp, SuccessGreen.copy(alpha = 0.35f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Ineligible",
-                            tint = ErrorRed,
+                            imageVector = Icons.Default.BarChart,
+                            contentDescription = "Attempt Completed",
+                            tint = SuccessGreen,
                             modifier = Modifier.size(44.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     Text(
-                        text = "Not Eligible for Today's Daily Test",
+                        text = "Today's Daily Test Completed",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
                         textAlign = TextAlign.Center
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
-                        text = eligibility.reason ?: "You have already attempted today's Daily Test in another Course/Class.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.error,
+                        text = "You have already attempted today's Daily Test. In accordance with competition rules, only 1 attempt is allowed per student per day across all courses.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
 
                     Spacer(modifier = Modifier.height(20.dp))
 
+                    // Existing Attempt Details Card
                     GlassCard(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp)
@@ -149,60 +205,110 @@ fun DailyTestScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(18.dp)
+                                .padding(20.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Info,
-                                    contentDescription = null,
-                                    tint = PrimaryPurple,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Your Today's Attempt Summary",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            if (displayRollNo.isNotBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Roll Number:",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = displayRollNo,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PrimaryPurple
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
                                 Text(
-                                    text = "Daily Participation Rule",
+                                    text = "Score Obtained:",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "${displayScore.toInt()} / ${displayTotal.toInt()} Marks",
+                                    style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.titleSmall,
+                                    color = AccentGold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Course / Class:",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = displayCourseClass,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Course/Class switching is permitted in the app. However, students can participate in only ONE Course/Class Daily Test competition per calendar day.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Tomorrow at 12:00 AM IST, the daily competition resets and you can participate again.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = PrimaryPurple,
-                                fontWeight = FontWeight.SemiBold
-                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(PrimaryPurple.copy(alpha = 0.08f))
+                                    .padding(12.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Schedule,
+                                        contentDescription = null,
+                                        tint = PrimaryPurple,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Resets in $dailyCountdown at 12:00 AM IST",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = PrimaryPurple,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    Button(
-                        onClick = {},
-                        enabled = false,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    ) {
-                        Icon(imageVector = Icons.Default.Block, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Attempted in ${eligibility.attemptedClassName ?: "Another Class"}",
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    GoldGradientButton(
+                        text = "View Result & Leaderboard",
+                        onClick = { onViewResultClick?.invoke() },
+                        leadingIcon = Icons.Default.BarChart,
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "view_daily_result_leaderboard_button"
+                    )
                 }
             }
         } else if (dailyTest == null) {
@@ -380,61 +486,68 @@ fun DailyTestScreen(
                                 )
                             }
 
-                            // If attempts already taken today within this Course+Class (Rule 4 & 9)
-                            if (attemptsToday.isNotEmpty()) {
-                                Spacer(modifier = Modifier.height(14.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(Color.Black.copy(alpha = 0.25f))
-                                        .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
-                                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = Icons.Default.Replay,
-                                                contentDescription = null,
-                                                tint = AccentGold,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = "Attempts: ${attemptsToday.size} (Unlimited)",
-                                                color = Color.White,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
+                            Spacer(modifier = Modifier.height(14.dp))
 
-                                        if (bestResult != null) {
-                                            Text(
-                                                text = "Best: ${bestResult.bestScore.toInt()}/${dailyTest.totalMarks.toInt()} (Rank #${bestResult.rank})",
-                                                color = AccentGold,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
+                            // Participant Name & Roll info bar (clickable to edit details)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.15f))
+                                    .clickable { showRegistrationDialog = true }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (studentName.isNotBlank() && !studentName.equals("Student", ignoreCase = true)) "Participant: $studentName" else "Tap to enter Student Name for Leaderboard",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit Name",
+                                        tint = AccentGold,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Edit",
+                                        color = AccentGold,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(20.dp))
-
-                            val buttonLabel = if (attemptsToday.isEmpty()) {
-                                "Start Daily Test Now"
-                            } else {
-                                "Retake Daily Test • Attempt #${attemptsToday.size + 1}"
-                            }
+                            Spacer(modifier = Modifier.height(16.dp))
 
                             GoldGradientButton(
-                                text = buttonLabel,
-                                onClick = { onStartDailyTestClick(dailyTest) },
+                                text = "Start Daily Test Now",
+                                onClick = {
+                                    if (dailyTest != null) {
+                                        if (studentName.isBlank() || studentName.equals("Student", ignoreCase = true)) {
+                                            showRegistrationDialog = true
+                                        } else {
+                                            onStartDailyTestClick(dailyTest)
+                                        }
+                                    }
+                                },
                                 leadingIcon = Icons.Default.PlayArrow,
                                 modifier = Modifier.fillMaxWidth(),
                                 testTag = "start_daily_test_dedicated_button"
@@ -487,6 +600,207 @@ fun DailyTestScreen(
                 }
             }
         }
+    }
+
+    // Enhanced Student Registration Details Dialog before test start
+    if (showRegistrationDialog) {
+        AlertDialog(
+            onDismissRequest = { showRegistrationDialog = false },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(
+                            androidx.compose.ui.graphics.Brush.linearGradient(
+                                colors = listOf(PrimaryPurple, Color(0xFF6B21A8))
+                            )
+                        )
+                        .border(2.dp, AccentGold, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            },
+            title = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "Enter Your Information",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Enter your details before launching today's Daily Test.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    OutlinedTextField(
+                        value = registrationNameInput,
+                        onValueChange = {
+                            registrationNameInput = it
+                            if (it.trim().length >= 2) registrationNameError = null
+                        },
+                        label = { Text("Full Student Name *") },
+                        placeholder = { Text("e.g. Rahul Sharma") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = PrimaryPurple
+                            )
+                        },
+                        trailingIcon = {
+                            if (registrationNameInput.isNotEmpty()) {
+                                androidx.compose.material3.IconButton(
+                                    onClick = { registrationNameInput = "" }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Clear text",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        },
+                        isError = registrationNameError != null,
+                        supportingText = registrationNameError?.let { { Text(it, color = ErrorRed) } },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    )
+
+                    // Test Metadata Summary Cards
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                            .padding(14.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Selected Course:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = currentClass.name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            if (effectiveRollNo.isNotBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Daily Roll Number:",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(PrimaryPurple.copy(alpha = 0.12f))
+                                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = effectiveRollNo,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = PrimaryPurple
+                                        )
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Test Date:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = com.example.util.DailyTestTimeUtils.getFormattedDisplayDate(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val trimmed = registrationNameInput.trim()
+                        if (trimmed.length < 2) {
+                            registrationNameError = "Please enter a valid student name (at least 2 characters)"
+                            return@Button
+                        }
+                        coroutineScope.launch {
+                            onRequestRollNumber?.invoke()
+                            onUpdateStudentName?.invoke(trimmed)
+                            showRegistrationDialog = false
+                            dailyTest?.let { onStartDailyTestClick(it) }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.height(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Save & Start Daily Test", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showRegistrationDialog = false },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.height(44.dp)
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

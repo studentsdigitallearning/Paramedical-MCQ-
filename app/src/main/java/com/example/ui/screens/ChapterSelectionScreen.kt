@@ -155,7 +155,11 @@ fun ChapterSelectionScreen(
                 contentPadding = PaddingValues(bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                items(filteredChapters) { chapter ->
+                items(
+                    items = filteredChapters,
+                    key = { it.id },
+                    contentType = { "chapter_item" }
+                ) { chapter ->
                     ChapterItemCard(
                         chapter = chapter,
                         onClick = { onChapterClick(chapter) }

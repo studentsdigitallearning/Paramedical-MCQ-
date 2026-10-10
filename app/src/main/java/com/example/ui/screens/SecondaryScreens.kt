@@ -539,7 +539,7 @@ fun SettingsScreen(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("MCQ Test Series v1.0", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text("JAC MCQ Master v1.0", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("Platform: Android • Indigo Glass Design", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Enhanced Voice Reading System with Math & Chemistry", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

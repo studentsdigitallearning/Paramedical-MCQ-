@@ -209,9 +209,9 @@ class QuizTtsManager(context: Context) : TextToSpeech.OnInitListener {
         configureVoice(isHindi, gender)
 
         val previewSentence = if (isHindi) {
-            "एमसीक्यू टेस्ट सीरीज़ में आपका स्वागत है। आइए मिलकर अभ्यास करें और परीक्षा में सफलता प्राप्त करें।"
+            "जेएसी एमसीक्यू मास्टर में आपका स्वागत है। आइए मिलकर अभ्यास करें और परीक्षा में सफलता प्राप्त करें।"
         } else {
-            "Welcome to MCQ Test Series. Let us practice and excel together."
+            "Welcome to JAC MCQ Master. Let us practice and excel together."
         }
 
         val params = Bundle()
