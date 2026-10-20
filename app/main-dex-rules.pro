@@ -1,0 +1,3 @@
+-keep class com.jacboard.mcqmaster.MainActivity { <init>(...); }
+-keep class com.jacboard.mcqmaster.McqMasterApplication { <init>(...); }
+-keep class com.jacboard.mcqmaster.** { *; }

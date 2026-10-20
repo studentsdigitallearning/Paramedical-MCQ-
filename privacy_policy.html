@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Official Privacy Policy for JAC MCQ Master Android Application (com.jacboard.mcqmaster).">
+    <title>Privacy Policy — JAC MCQ Master</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-dark: #312E81;
+            --primary-light: #EEF2FF;
+            --accent: #F59E0B;
+            --success: #059669;
+            --success-bg: #ECFDF5;
+            --bg: #F8FAFC;
+            --surface: #FFFFFF;
+            --text: #0F172A;
+            --text-secondary: #334155;
+            --muted: #64748B;
+            --border: #E2E8F0;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.75;
+            color: var(--text);
+            background-color: var(--bg);
+            -webkit-font-smoothing: antialiased;
+        }
+        .hero {
+            background: linear-gradient(135deg, #4F46E5 0%, #6D28D9 55%, #312E81 100%);
+            color: #FFFFFF;
+            padding: 56px 24px 76px;
+            text-align: center;
+        }
+        .badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.16);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            color: #FDE68A;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 16px;
+            border-radius: 999px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+        .hero h1 {
+            font-size: clamp(26px, 4vw, 36px);
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 12px;
+        }
+        .hero p {
+            max-width: 680px;
+            margin: 0 auto;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 15px;
+        }
+        .meta-bar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 20px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.85);
+        }
+        .meta-pill {
+            background: rgba(15, 23, 42, 0.28);
+            padding: 5px 14px;
+            border-radius: 999px;
+        }
+        .container {
+            max-width: 880px;
+            margin: -44px auto 64px;
+            padding: 0 20px;
+        }
+        .highlights-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+        .highlight-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 18px 16px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.05);
+        }
+        .highlight-card strong {
+            display: block;
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 4px;
+        }
+        .highlight-card span {
+            font-size: 13px;
+            color: var(--muted);
+        }
+        .section-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 28px 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.035);
+        }
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .section-num {
+            background: var(--primary-light);
+            color: var(--primary);
+            font-size: 12px;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 8px;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+        h2 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        h3 {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+            margin: 16px 0 8px;
+        }
+        p {
+            color: var(--text-secondary);
+            font-size: 15px;
+            margin-bottom: 12px;
+        }
+        p:last-child {
+            margin-bottom: 0;
+        }
+        ul {
+            padding-left: 22px;
+            margin: 10px 0;
+        }
+        li {
+            color: var(--text-secondary);
+            font-size: 15px;
+            margin-bottom: 10px;
+        }
+        li:last-child {
+            margin-bottom: 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+            font-size: 14px;
+        }
+        th, td {
+            border: 1px solid var(--border);
+            padding: 12px 14px;
+            text-align: left;
+            vertical-align: top;
+        }
+        th {
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            font-weight: 700;
+        }
+        td {
+            color: var(--text-secondary);
+        }
+        code {
+            background: #F1F5F9;
+            color: #0F172A;
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+        .callout {
+            background: var(--success-bg);
+            border-left: 4px solid var(--success);
+            padding: 14px 18px;
+            border-radius: 10px;
+            margin-top: 14px;
+            font-size: 14px;
+            color: #065F46;
+        }
+        .contact-box {
+            background: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%);
+            border: 1px solid #C7D2FE;
+            border-radius: 18px;
+            padding: 24px;
+            margin-top: 12px;
+        }
+        .contact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin-top: 14px;
+        }
+        .contact-item {
+            background: #FFFFFF;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            font-size: 14px;
+        }
+        .contact-item strong {
+            display: block;
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 14px;
+            padding: 28px 0 12px;
+        }
+        @media (max-width: 600px) {
+            .section-card {
+                padding: 22px 18px;
+            }
+            th, td {
+                padding: 10px;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="hero">
+        <div class="badge">Google Play Data Safety Compliant</div>
+        <h1>Privacy Policy</h1>
+        <p>This Privacy Policy explains how <strong>JAC MCQ Master</strong> collects, uses, stores, and protects student information when you use our mobile application.</p>
+        <div class="meta-bar">
+            <span class="meta-pill">App Name: JAC MCQ Master</span>
+            <span class="meta-pill">Package ID: com.jacboard.mcqmaster</span>
+            <span class="meta-pill">Effective Date: October 19, 2026</span>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="highlights-grid">
+            <div class="highlight-card">
+                <strong>Zero Mandatory Login</strong>
+                <span>No phone number, email, or password required</span>
+            </div>
+            <div class="highlight-card">
+                <strong>HTTPS / TLS 1.3</strong>
+                <span>All cloud data encrypted in transit</span>
+            </div>
+            <div class="highlight-card">
+                <strong>Minimal Permissions</strong>
+                <span>Internet &amp; Network State only</span>
+            </div>
+            <div class="highlight-card">
+                <strong>No Ad Trackers</strong>
+                <span>Zero third-party behavioural tracking</span>
+            </div>
+        </div>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">01</span>
+                <h2>Introduction &amp; Developer Identity</h2>
+            </div>
+            <p><strong>JAC MCQ Master</strong> ("we", "our", or "the Application") is an educational MCQ practice, mock test, and exam-preparation platform developed and published by <strong>Ravi Kumar</strong> (Organization: Individual / App Development, Sahibganj, Jharkhand, India).</p>
+            <p>The Application is built to help students prepare for Jharkhand Academic Council (JAC) &amp; CBSE Board examinations (Classes 8, 9, 10, 11, and 12) as well as Paramedical and Competitive courses (DMLT, BMLT, OT Technician, and Lab Technician). By installing or using JAC MCQ Master, you agree to the practices described in this Privacy Policy.</p>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">02</span>
+                <h2>Information We Collect &amp; How We Use It</h2>
+            </div>
+            <p>JAC MCQ Master is designed on a <strong>Privacy-First, Zero-Login Architecture</strong>. You are not required to register an account with an email address, phone number, Aadhaar number, or password to access study materials or practice tests.</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data Element</th>
+                        <th>How It Is Collected</th>
+                        <th>Purpose of Use</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Student Display Name</strong></td>
+                        <td>Entered voluntarily by the user in Profile or before taking the Daily Test</td>
+                        <td>Displayed on your in-app profile, Daily Test Leaderboard, and downloadable Achievement Certificates.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Selected Course / Class</strong></td>
+                        <td>Chosen by the user on the Choose Course screen (e.g., Class 10, Class 12, DMLT)</td>
+                        <td>Filters relevant subjects, chapters, mock tests, promotional banners, and course-specific leaderboards.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Daily Test Scores, Time Taken &amp; Roll Number</strong></td>
+                        <td>Generated when you submit the Daily MCQ Challenge</td>
+                        <td>Synced to our Supabase cloud database to compute live all-student rankings and generate your Daily Test scorecard.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>App-Scoped Student ID (UUID)</strong></td>
+                        <td>Randomly generated UUID stored locally on your device</td>
+                        <td>Ensures fair play by enforcing the one-attempt-per-day rule on the Daily MCQ Challenge without collecting hardware identifiers (such as IMEI or MAC address).</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="callout">
+                <strong>What We Never Collect:</strong> We never collect your precise GPS location, contacts list, SMS messages, call logs, photos/media files, microphone recordings, financial/payment details, or biometric data.
+            </div>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">03</span>
+                <h2>On-Device Storage &amp; Local Preferences</h2>
+            </div>
+            <p>The following preferences and study records remain stored strictly on your device using Android's sandboxed storage and encrypted preferences:</p>
+            <ul>
+                <li><strong>Practice &amp; Mock Test History:</strong> Your attempted questions, accuracy statistics, bookmarked/reviewed questions, and chapter-wise progress percentages.</li>
+                <li><strong>Monthly Practice Streak Calendar:</strong> Your daily practice streak count and monthly milestone badges.</li>
+                <li><strong>Theme &amp; Voice Reading Preferences:</strong> Your choice of Light/Dark mode, preferred reading language (Indian English or Indian Hindi), and preferred voice profile (Male or Female).</li>
+            </ul>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">04</span>
+                <h2>Voice Reading System (Text-to-Speech)</h2>
+            </div>
+            <p>JAC MCQ Master includes an accessibility and study-aid <strong>Voice Reading System</strong> that reads MCQ questions, options (A, B, C, D), mathematical expressions, and chemistry formulas aloud in Indian English and Indian Hindi.</p>
+            <ul>
+                <li>The feature uses the standard on-device Android <code>android.speech.tts.TextToSpeech</code> engine installed on your phone.</li>
+                <li>Text formatting for math equations and chemical formulas is processed 100% locally on your device.</li>
+                <li>The Application <strong>never</strong> accesses your microphone, never listens to ambient audio, and never transmits voice recordings to any server.</li>
+            </ul>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">05</span>
+                <h2>App Permissions &amp; Digital Certificate Sharing</h2>
+            </div>
+            <p>JAC MCQ Master follows the principle of least privilege and requests only normal install-time network permissions:</p>
+            <ul>
+                <li><code>android.permission.INTERNET</code> — Required to fetch live courses, subjects, chapters, MCQ test sets, banners, and Daily Leaderboard rankings from our cloud database.</li>
+                <li><code>android.permission.ACCESS_NETWORK_STATE</code> — Used to detect offline status and gracefully display offline retry notifications.</li>
+                <li><strong>Achievement Certificates:</strong> When you generate or share a Daily Test Certificate, the image/PDF file is created temporarily inside the app's private cache directory (<code>cacheDir/certificates/</code>) and shared solely when you tap the Share button via Android's secure <code>FileProvider</code>. The app does not request broad external storage permissions (<code>READ_EXTERNAL_STORAGE</code> or <code>WRITE_EXTERNAL_STORAGE</code>).</li>
+            </ul>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">06</span>
+                <h2>Cloud Infrastructure &amp; Data Security</h2>
+            </div>
+            <p>We use <strong>Supabase</strong> as our managed cloud database provider to deliver dynamic educational content and real-time Daily Leaderboard updates.</p>
+            <ul>
+                <li><strong>Encryption in Transit:</strong> All network requests between the Android app and our backend are encrypted via HTTPS/TLS 1.3. Cleartext HTTP traffic is explicitly disabled in the Android network security configuration (<code>usesCleartextTraffic="false"</code>).</li>
+                <li><strong>Row-Level Security (RLS):</strong> Database tables are protected by PostgreSQL Row-Level Security policies so students can only read published educational content and submit their own Daily Test score.</li>
+                <li><strong>No Third-Party Data Selling:</strong> We do not sell, rent, trade, or share student data with advertising networks or data brokers.</li>
+            </ul>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">07</span>
+                <h2>Data Retention, Midnight Reset &amp; Deletion Rights</h2>
+            </div>
+            <ul>
+                <li><strong>Automatic Midnight Leaderboard Reset:</strong> Daily Test participant entries and daily leaderboard rankings are automatically reset every night at <strong>12:00:00 AM IST (Indian Standard Time)</strong> so each day begins with a fresh competition.</li>
+                <li><strong>Editing Your Name &amp; Course:</strong> You can update your Student Display Name or change your selected Class/Course at any time directly inside the app's Profile screen.</li>
+                <li><strong>Deleting Local Data:</strong> Clearing the app's storage in Android Settings or uninstalling JAC MCQ Master permanently deletes all locally stored test history, streak records, and preferences from your device.</li>
+                <li><strong>Requesting Server Data Deletion:</strong> If you wish to have a submitted Daily Leaderboard entry removed prior to the automatic midnight reset, please email us with your Display Name and Daily Roll Number and we will process your request promptly.</li>
+            </ul>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">08</span>
+                <h2>Children's &amp; Student Privacy</h2>
+            </div>
+            <p>JAC MCQ Master is an educational learning tool designed for secondary, senior-secondary, and diploma students. Because we do not require user accounts, passwords, phone numbers, email addresses, or location data, students can practice safely without exposing personally identifiable contact information. Parents or guardians who believe their child has entered personal information inside the display name field may change it directly in the Profile tab or contact us for assistance.</p>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">09</span>
+                <h2>Changes to This Privacy Policy</h2>
+            </div>
+            <p>We may update this Privacy Policy periodically to reflect new educational features, security enhancements, or regulatory requirements. Any changes will be posted on this page with an updated "Effective Date" at the top.</p>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">10</span>
+                <h2>Contact Us &amp; Grievance Officer</h2>
+            </div>
+            <p>If you have any questions, concerns, or requests regarding this Privacy Policy or how your data is handled in JAC MCQ Master, please contact the developer:</p>
+            <div class="contact-box">
+                <div class="contact-grid">
+                    <div class="contact-item">
+                        <strong>Developer / Publisher</strong>
+                        Ravi Kumar (App Development)
+                    </div>
+                    <div class="contact-item">
+                        <strong>Support Email</strong>
+                        <a href="mailto:bishnuthakur207@gmail.com">bishnuthakur207@gmail.com</a>
+                    </div>
+                    <div class="contact-item">
+                        <strong>Location</strong>
+                        Sahibganj, Jharkhand, India
+                    </div>
+                    <div class="contact-item">
+                        <strong>Application Package</strong>
+                        <code>com.jacboard.mcqmaster</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            &copy; 2026 JAC MCQ Master • Developed by Ravi Kumar (Sahibganj, Jharkhand, India). All rights reserved.
+        </footer>
+    </main>
+
+</body>
+</html>

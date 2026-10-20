@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Official Terms and Conditions for JAC MCQ Master Android Application (com.jacboard.mcqmaster).">
+    <title>Terms &amp; Conditions — JAC MCQ Master</title>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-dark: #312E81;
+            --primary-light: #EEF2FF;
+            --accent: #F59E0B;
+            --warning-bg: #FFFBEB;
+            --warning-border: #F59E0B;
+            --bg: #F8FAFC;
+            --surface: #FFFFFF;
+            --text: #0F172A;
+            --text-secondary: #334155;
+            --muted: #64748B;
+            --border: #E2E8F0;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.75;
+            color: var(--text);
+            background-color: var(--bg);
+            -webkit-font-smoothing: antialiased;
+        }
+        .hero {
+            background: linear-gradient(135deg, #4F46E5 0%, #6D28D9 55%, #312E81 100%);
+            color: #FFFFFF;
+            padding: 56px 24px 76px;
+            text-align: center;
+        }
+        .badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.16);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            color: #FDE68A;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 16px;
+            border-radius: 999px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+        .hero h1 {
+            font-size: clamp(26px, 4vw, 36px);
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 12px;
+        }
+        .hero p {
+            max-width: 680px;
+            margin: 0 auto;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 15px;
+        }
+        .meta-bar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 20px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.85);
+        }
+        .meta-pill {
+            background: rgba(15, 23, 42, 0.28);
+            padding: 5px 14px;
+            border-radius: 999px;
+        }
+        .container {
+            max-width: 880px;
+            margin: -44px auto 64px;
+            padding: 0 20px;
+        }
+        .highlights-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+        .highlight-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 18px 16px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.05);
+        }
+        .highlight-card strong {
+            display: block;
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 4px;
+        }
+        .highlight-card span {
+            font-size: 13px;
+            color: var(--muted);
+        }
+        .section-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 28px 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.035);
+        }
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .section-num {
+            background: var(--primary-light);
+            color: var(--primary);
+            font-size: 12px;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 8px;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+        h2 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        p {
+            color: var(--text-secondary);
+            font-size: 15px;
+            margin-bottom: 12px;
+        }
+        p:last-child {
+            margin-bottom: 0;
+        }
+        ul {
+            padding-left: 22px;
+            margin: 10px 0;
+        }
+        li {
+            color: var(--text-secondary);
+            font-size: 15px;
+            margin-bottom: 10px;
+        }
+        li:last-child {
+            margin-bottom: 0;
+        }
+        code {
+            background: #F1F5F9;
+            color: #0F172A;
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+        .notice-box {
+            background: var(--warning-bg);
+            border-left: 4px solid var(--warning-border);
+            padding: 14px 18px;
+            border-radius: 10px;
+            margin-top: 14px;
+            font-size: 14px;
+            color: #92400E;
+        }
+        .contact-box {
+            background: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%);
+            border: 1px solid #C7D2FE;
+            border-radius: 18px;
+            padding: 24px;
+            margin-top: 12px;
+        }
+        .contact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin-top: 14px;
+        }
+        .contact-item {
+            background: #FFFFFF;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            font-size: 14px;
+        }
+        .contact-item strong {
+            display: block;
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 14px;
+            padding: 28px 0 12px;
+        }
+        @media (max-width: 600px) {
+            .section-card {
+                padding: 22px 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="hero">
+        <div class="badge">Official User Agreement &amp; Fair Play Policy</div>
+        <h1>Terms &amp; Conditions</h1>
+        <p>Please read these Terms &amp; Conditions carefully before using the <strong>JAC MCQ Master</strong> Android application.</p>
+        <div class="meta-bar">
+            <span class="meta-pill">App Name: JAC MCQ Master</span>
+            <span class="meta-pill">Package ID: com.jacboard.mcqmaster</span>
+            <span class="meta-pill">Effective Date: October 19, 2026</span>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="highlights-grid">
+            <div class="highlight-card">
+                <strong>Educational Platform</strong>
+                <span>Classes 8–12 &amp; Paramedical Prep</span>
+            </div>
+            <div class="highlight-card">
+                <strong>Fair Competition</strong>
+                <span>1 Official Daily Test Attempt / Day</span>
+            </div>
+            <div class="highlight-card">
+                <strong>Bilingual Learning</strong>
+                <span>English &amp; Hindi MCQ Support</span>
+            </div>
+            <div class="highlight-card">
+                <strong>Midnight IST Reset</strong>
+                <span>Daily Leaderboard resets at 12:00 AM</span>
+            </div>
+        </div>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">01</span>
+                <h2>Acceptance of Terms</h2>
+            </div>
+            <p>By downloading, installing, accessing, or using the <strong>JAC MCQ Master</strong> mobile application ("the Application"), developed and maintained by <strong>Ravi Kumar</strong> (Sahibganj, Jharkhand, India), you agree to be bound by these Terms &amp; Conditions. If you do not agree with any part of these terms, please discontinue use of the Application.</p>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">02</span>
+                <h2>Educational Purpose &amp; Non-Affiliation Disclaimer</h2>
+            </div>
+            <p>JAC MCQ Master provides chapter-wise practice sets, full-syllabus mock tests, previous year examination papers, bilingual voice reading, and daily competitive challenges for students preparing for:</p>
+            <ul>
+                <li>Board Examinations (Classes 8, 9, 10, 11, and 12 across Science, Mathematics, Social Science, English, Hindi, Physics, Chemistry, and Biology).</li>
+                <li>Paramedical &amp; Allied Health Diploma/Degree Entrance and Semester Examinations (DMLT, BMLT, OT Technician, and Lab Technician).</li>
+            </ul>
+            <div class="notice-box">
+                <strong>Independent Educational App Disclaimer:</strong> JAC MCQ Master is an independent private educational study application and is <strong>not</strong> an official application of, nor affiliated with or endorsed by, the Jharkhand Academic Council (JAC), CBSE, or any state or central government department.
+            </div>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">03</span>
+                <h2>Daily MCQ Challenge &amp; Leaderboard Rules</h2>
+            </div>
+            <p>To ensure a transparent, motivating, and fair learning competition for all students, participation in the <strong>Daily MCQ Challenge</strong> is governed by the following rules:</p>
+            <ul>
+                <li><strong>Single Official Attempt Per Day:</strong> Each student is permitted <strong>one (1) official Daily Test attempt per calendar day (IST)</strong>. Once started or submitted, the official attempt is locked for that calendar day across all courses.</li>
+                <li><strong>Ranking Methodology:</strong> Leaderboard positions are calculated first by <strong>highest marks scored</strong>, and in the event of a tie, by <strong>fastest completion time (in seconds)</strong>.</li>
+                <li><strong>Midnight IST Reset:</strong> Every night at <strong>12:00:00 AM IST</strong>, the Daily Test and Daily Leaderboard reset automatically for the new calendar day.</li>
+                <li><strong>Display Name Conduct:</strong> Students must use respectful display names. The use of abusive, offensive, misleading, or impersonating names on the public leaderboard is strictly prohibited and such entries may be removed without notice.</li>
+                <li><strong>Anti-Cheating Policy:</strong> Any attempt to manipulate test timers, submit falsified scores through automated scripts, or tamper with network requests will result in disqualification from the leaderboard.</li>
+            </ul>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">04</span>
+                <h2>Practice Mode, Exam Mode &amp; Scoring</h2>
+            </div>
+            <ul>
+                <li><strong>Practice Mode:</strong> Designed for self-paced learning with instant option verification, detailed explanations, and bilingual Voice Reading (Text-to-Speech) support.</li>
+                <li><strong>Exam Mode:</strong> Simulates real time-bound examination conditions. Correct answers are revealed only after final submission or when the countdown timer expires.</li>
+                <li><strong>Negative Marking:</strong> Certain tests carry negative marking for incorrect answers as displayed on the Test Instructions screen prior to starting the test. Unattempted questions carry zero deduction.</li>
+                <li><strong>Achievement Certificates:</strong> Digital certificates generated inside the Application are intended for personal academic motivation and recognition of daily test performance. They do not constitute official government or academic board credentials.</li>
+            </ul>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">05</span>
+                <h2>Intellectual Property Rights &amp; Acceptable Use</h2>
+            </div>
+            <p>All content, source code, visual interface designs, custom icons, mathematical and chemical speech formatting logic, curated MCQ banks, and explanatory notes within JAC MCQ Master are the intellectual property of <strong>Ravi Kumar</strong> or licensed content contributors.</p>
+            <ul>
+                <li><strong>Personal License:</strong> You are granted a revocable, non-exclusive, non-transferable, personal license to use the Application for non-commercial study and exam preparation.</li>
+                <li><strong>Permitted Sharing:</strong> You may freely share your personal test scorecards, leaderboard ranks, and achievement certificates with friends, teachers, or on social media.</li>
+                <li><strong>Prohibited Actions:</strong> You may not copy, scrape, redistribute, sell, decompile, reverse-engineer, or create derivative commercial apps or websites from our MCQ database or APK/AAB package without prior written consent.</li>
+            </ul>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">06</span>
+                <h2>Content Accuracy &amp; Limitation of Liability</h2>
+            </div>
+            <p>While every effort is made to verify the accuracy of questions, answer keys, mathematical equations, chemical formulas, and explanations, syllabus updates or typographical errors may occasionally occur.</p>
+            <ul>
+                <li>The Application and all study materials are provided on an "AS IS" and "AS AVAILABLE" basis without warranties of any kind.</li>
+                <li>Students are advised to cross-verify official syllabus changes, exam schedules, and textbook definitions with their respective school or examination board notifications.</li>
+                <li>If you find an error in any question or explanation, please report it via the Contact Us section so our content team can update it via live cloud sync.</li>
+            </ul>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">07</span>
+                <h2>Governing Law &amp; Jurisdiction</h2>
+            </div>
+            <p>These Terms &amp; Conditions shall be governed by and construed in accordance with the laws of <strong>India</strong>. Any disputes arising in connection with these Terms or the use of the Application shall be subject to the exclusive jurisdiction of the courts located in <strong>Jharkhand, India</strong>.</p>
+        </section>
+
+        <section class="section-card">
+            <div class="section-header">
+                <span class="section-num">08</span>
+                <h2>Contact &amp; Support Information</h2>
+            </div>
+            <p>For questions regarding these Terms &amp; Conditions, academic content feedback, or technical support, please reach out to:</p>
+            <div class="contact-box">
+                <div class="contact-grid">
+                    <div class="contact-item">
+                        <strong>Developer / Publisher</strong>
+                        Ravi Kumar (App Development)
+                    </div>
+                    <div class="contact-item">
+                        <strong>Support Email</strong>
+                        <a href="mailto:bishnuthakur207@gmail.com">bishnuthakur207@gmail.com</a>
+                    </div>
+                    <div class="contact-item">
+                        <strong>Location</strong>
+                        Sahibganj, Jharkhand, India
+                    </div>
+                    <div class="contact-item">
+                        <strong>Application Package</strong>
+                        <code>com.jacboard.mcqmaster</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            &copy; 2026 JAC MCQ Master • Developed by Ravi Kumar (Sahibganj, Jharkhand, India). All rights reserved.
+        </footer>
+    </main>
+
+</body>
+</html>

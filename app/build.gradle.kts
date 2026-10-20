@@ -1,4 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -9,26 +10,68 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "com.jacboard.mcqmaster"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
     applicationId = "com.jacboard.mcqmaster"
-    minSdk = 24
+    minSdk = 23
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"
 
+    val envSupabaseUrl = System.getenv("SUPABASE_URL")
+      ?: "https://zjortvgjiuimqvgxmpbn.supabase.co"
+    val envSupabaseAnonKey = System.getenv("SUPABASE_ANON_KEY")
+      ?: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpqb3J0dmdqaXVpbXF2Z3htcGJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzNjY1MjQsImV4cCI6MjEwNjk0MjUyNH0.igAaxxH9fblPPmzyM044UgEiopMXStEjmgt1SQ_rLbg"
+
+    buildConfigField("String", "SUPABASE_URL", "\"$envSupabaseUrl\"")
+    buildConfigField("String", "SUPABASE_ANON_KEY", "\"$envSupabaseAnonKey\"")
+
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    multiDexEnabled = true
+    multiDexKeepProguard = file("main-dex-rules.pro")
   }
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      val keystorePropsFile = rootProject.file("keystore.properties")
+      val keystoreProps = Properties()
+      if (keystorePropsFile.exists()) {
+        keystorePropsFile.inputStream().use { stream ->
+          keystoreProps.load(stream)
+        }
+      }
+
+      val storeFilePath = System.getenv("KEYSTORE_PATH")
+        ?: keystoreProps.getProperty("storeFile")
+        ?: "${rootDir}/jac-mcq-master-release.jks"
+
+      val storePass = System.getenv("STORE_PASSWORD")
+        ?: keystoreProps.getProperty("storePassword")
+        ?: "Ravi@2005puja"
+
+      val aliasName = System.getenv("KEY_ALIAS")
+        ?: keystoreProps.getProperty("keyAlias")
+        ?: "jacmcqmaster"
+
+      val keyPass = System.getenv("KEY_PASSWORD")
+        ?: keystoreProps.getProperty("keyPassword")
+        ?: "Ravi@2005puja"
+
+      val kFile = file(storeFilePath)
+      if (kFile.exists() && !storePass.isNullOrBlank() && !keyPass.isNullOrBlank()) {
+        storeFile = kFile
+        storePassword = storePass
+        keyAlias = aliasName
+        keyPassword = keyPass
+      } else {
+        // Fallback to debug keystore if release keystore is not provisioned on build agent
+        storeFile = file("${rootDir}/debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+      }
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
@@ -94,35 +137,36 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
-  implementation(libs.androidx.navigation.compose)
-  implementation(libs.androidx.room.ktx)
-  implementation(libs.androidx.room.runtime)
+  // implementation(libs.androidx.navigation.compose)
+  // implementation(libs.androidx.room.ktx)
+  // implementation(libs.androidx.room.runtime)
   // implementation(libs.coil.compose)
-  implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
+  // implementation(libs.converter.moshi)
+  // implementation(libs.firebase.ai)
   // Uncomment to use Firestore:
   // implementation(libs.firebase.firestore)
 
   // Google Sign-In via Credential Manager:
-  implementation(libs.androidx.credentials)
-  implementation(libs.androidx.credentials.play.services)
-  implementation(libs.googleid)
-  implementation(libs.firebase.appcheck.recaptcha)
-  implementation(libs.firebase.appcheck.debug)
+  // implementation(libs.androidx.credentials)
+  // implementation(libs.androidx.credentials.play.services)
+  // implementation(libs.googleid)
+  // implementation(libs.firebase.appcheck.recaptcha)
+  // implementation(libs.firebase.appcheck.debug)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
-  implementation(libs.moshi.kotlin)
+  // implementation(libs.logging.interceptor)
+  // implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
+  implementation(libs.zxing)
   // implementation(libs.play.services.location)
-  implementation(libs.retrofit)
+  // implementation(libs.retrofit)
 
-  // Official Supabase Kotlin SDK
-  implementation(platform(libs.supabase.bom))
-  implementation(libs.supabase.auth)
-  implementation(libs.supabase.postgrest)
-  implementation(libs.supabase.realtime)
-  implementation(libs.ktor.client.android)
+  // Official Supabase Kotlin SDK is not used (custom OkHttp client is implemented)
+  // implementation(platform(libs.supabase.bom))
+  // implementation(libs.supabase.auth)
+  // implementation(libs.supabase.postgrest)
+  // implementation(libs.supabase.realtime)
+  // implementation(libs.ktor.client.android)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
@@ -136,6 +180,6 @@ dependencies {
   androidTestImplementation(libs.androidx.runner)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
-  "ksp"(libs.androidx.room.compiler)
-  "ksp"(libs.moshi.kotlin.codegen)
+  // "ksp"(libs.androidx.room.compiler)
+  // "ksp"(libs.moshi.kotlin.codegen)
 }
