@@ -33,6 +33,10 @@
     volatile <fields>;
 }
 
-# 6. Preserve Line Numbers for Crash Reporting
+# 6. Keep utility & ZXing QR generator classes
+-keep class com.jacboard.mcqmaster.util.** { *; }
+-dontwarn com.google.zxing.**
+
+# 7. Preserve Line Numbers for Crash Reporting
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile

@@ -37,15 +37,25 @@ class SupabaseDataSource(
         if (result.isFailure) {
             val fallbackResult = client.get("classes", "select=*")
             if (fallbackResult.isSuccess) {
-                val parsed = parseClassesJson(fallbackResult.getOrThrow())
+                val raw = fallbackResult.getOrThrow()
+                com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveContentCache("classes", raw)
+                val parsed = parseClassesJson(raw)
                 if (parsed.isNotEmpty()) return Result.success(parsed)
             }
+            val cached = loadCachedClasses()
+            if (cached.isNotEmpty()) return Result.success(cached)
             return Result.failure(result.exceptionOrNull() ?: Exception("Failed to fetch classes"))
         }
 
         val jsonString = result.getOrThrow()
+        com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveContentCache("classes", jsonString)
         val parsed = parseClassesJson(jsonString)
         return Result.success(parsed)
+    }
+
+    fun loadCachedClasses(): List<ClassData> {
+        val raw = com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.getContentCache("classes") ?: return emptyList()
+        return parseClassesJson(raw)
     }
 
     private fun parseClassesJson(jsonString: String): List<ClassData> {
@@ -84,10 +94,23 @@ class SupabaseDataSource(
         val query = "class_id=eq.$classId&select=*&order=id.asc"
         val result = client.get("subjects", query)
         if (result.isFailure) {
+            val cached = loadCachedSubjects(classId)
+            if (cached.isNotEmpty()) return Result.success(cached)
             return Result.failure(result.exceptionOrNull() ?: Exception("Failed to fetch subjects"))
         }
 
         val jsonString = result.getOrThrow()
+        com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveContentCache("subjects_$classId", jsonString)
+        return Result.success(parseSubjectsJson(jsonString, classId))
+    }
+
+    fun loadCachedSubjects(classId: String): List<Subject> {
+        if (classId.isBlank()) return emptyList()
+        val raw = com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.getContentCache("subjects_$classId") ?: return emptyList()
+        return parseSubjectsJson(raw, classId)
+    }
+
+    private fun parseSubjectsJson(jsonString: String, classId: String): List<Subject> {
         val list = mutableListOf<Subject>()
         try {
             val array = JSONArray(jsonString)
@@ -116,9 +139,8 @@ class SupabaseDataSource(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing subjects JSON: ${e.message}")
-            return Result.failure(e)
         }
-        return Result.success(list)
+        return list
     }
 
     /**
@@ -128,10 +150,23 @@ class SupabaseDataSource(
         val query = "subject_id=eq.$subjectId&select=*&order=chapter_number.asc,id.asc"
         val result = client.get("chapters", query)
         if (result.isFailure) {
+            val cached = loadCachedChapters(subjectId)
+            if (cached.isNotEmpty()) return Result.success(cached)
             return Result.failure(result.exceptionOrNull() ?: Exception("Failed to fetch chapters"))
         }
 
         val jsonString = result.getOrThrow()
+        com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveContentCache("chapters_$subjectId", jsonString)
+        return Result.success(parseChaptersJson(jsonString, subjectId))
+    }
+
+    fun loadCachedChapters(subjectId: String): List<Chapter> {
+        if (subjectId.isBlank()) return emptyList()
+        val raw = com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.getContentCache("chapters_$subjectId") ?: return emptyList()
+        return parseChaptersJson(raw, subjectId)
+    }
+
+    private fun parseChaptersJson(jsonString: String, subjectId: String): List<Chapter> {
         val list = mutableListOf<Chapter>()
         try {
             val array = JSONArray(jsonString)
@@ -160,9 +195,8 @@ class SupabaseDataSource(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing chapters JSON: ${e.message}")
-            return Result.failure(e)
         }
-        return Result.success(list.sortedBy { it.chapterNumber })
+        return list.sortedBy { it.chapterNumber }
     }
 
     /**
@@ -171,10 +205,22 @@ class SupabaseDataSource(
     suspend fun fetchCategories(): Result<List<TestCategory>> {
         val result = client.get("categories", "select=*&order=id.asc")
         if (result.isFailure) {
+            val cached = loadCachedCategories()
+            if (cached.isNotEmpty()) return Result.success(cached)
             return Result.failure(result.exceptionOrNull() ?: Exception("Failed to fetch categories"))
         }
 
         val jsonString = result.getOrThrow()
+        com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveContentCache("categories", jsonString)
+        return Result.success(parseCategoriesJson(jsonString))
+    }
+
+    fun loadCachedCategories(): List<TestCategory> {
+        val raw = com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.getContentCache("categories") ?: return emptyList()
+        return parseCategoriesJson(raw)
+    }
+
+    private fun parseCategoriesJson(jsonString: String): List<TestCategory> {
         val list = mutableListOf<TestCategory>()
         try {
             val array = JSONArray(jsonString)
@@ -204,15 +250,15 @@ class SupabaseDataSource(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing categories JSON: ${e.message}")
-            return Result.failure(e)
         }
-        return Result.success(list)
+        return list
     }
 
     /**
      * Loads published/active tests dynamically from Supabase.
      */
     suspend fun fetchTests(classId: String? = null): Result<List<Test>> {
+        val cacheKey = "tests_${classId ?: "all"}"
         val queryParams = buildString {
             append("select=*")
             if (!classId.isNullOrBlank()) {
@@ -223,10 +269,23 @@ class SupabaseDataSource(
 
         val result = client.get("tests", queryParams)
         if (result.isFailure) {
+            val cached = loadCachedTests(classId)
+            if (cached.isNotEmpty()) return Result.success(cached)
             return Result.failure(result.exceptionOrNull() ?: Exception("Failed to fetch tests"))
         }
 
         val jsonString = result.getOrThrow()
+        com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveContentCache(cacheKey, jsonString)
+        return Result.success(parseTestsJson(jsonString, classId))
+    }
+
+    fun loadCachedTests(classId: String? = null): List<Test> {
+        val cacheKey = "tests_${classId ?: "all"}"
+        val raw = com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.getContentCache(cacheKey) ?: return emptyList()
+        return parseTestsJson(raw, classId)
+    }
+
+    private fun parseTestsJson(jsonString: String, classId: String?): List<Test> {
         val list = mutableListOf<Test>()
         try {
             val array = JSONArray(jsonString)
@@ -301,23 +360,35 @@ class SupabaseDataSource(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing tests JSON: ${e.message}")
-            return Result.failure(e)
         }
-        return Result.success(list)
+        return list
     }
 
     /**
      * Loads questions for a specific test dynamically from Supabase (Requirement 6).
-     * Questions are fetched when test starts, not bundled in the APK.
+     * Questions are fetched when test starts and cached locally for fast offline/repeat access.
      */
     suspend fun fetchQuestions(testId: String): Result<List<Question>> {
         val query = "test_id=eq.$testId&select=*&order=question_index.asc,id.asc"
         val result = client.get("questions", query)
         if (result.isFailure) {
+            val cached = loadCachedQuestions(testId)
+            if (cached.isNotEmpty()) return Result.success(cached)
             return Result.failure(result.exceptionOrNull() ?: Exception("Failed to fetch questions"))
         }
 
         val jsonString = result.getOrThrow()
+        com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveContentCache("questions_$testId", jsonString)
+        return Result.success(parseQuestionsJson(jsonString, testId))
+    }
+
+    fun loadCachedQuestions(testId: String): List<Question> {
+        if (testId.isBlank()) return emptyList()
+        val raw = com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.getContentCache("questions_$testId") ?: return emptyList()
+        return parseQuestionsJson(raw, testId)
+    }
+
+    private fun parseQuestionsJson(jsonString: String, testId: String): List<Question> {
         val list = mutableListOf<Question>()
         try {
             val array = JSONArray(jsonString)
@@ -327,7 +398,22 @@ class SupabaseDataSource(
                 val id = obj.optString("id", "q_${testId}_${i + 1}")
                 val itemTestId = obj.optString("test_id", testId)
                 val questionIndex = obj.optInt("question_index", obj.optInt("index", i))
-                val text = obj.optString("text", obj.optString("question", "Question ${i + 1}"))
+                var rawText = obj.optString("text", obj.optString("question", "Question ${i + 1}"))
+
+                // Extract optional image URL from column or [IMG:...] tag in text
+                var imageUrl = obj.optString(
+                    "image_url",
+                    obj.optString("imageUrl", obj.optString("image", obj.optString("diagram_url", "")))
+                ).trim().takeIf { it.isNotBlank() && it != "null" }
+
+                val imgTagRegex = Regex("""\[IMG:([^\]]+)]""", RegexOption.IGNORE_CASE)
+                val imgMatch = imgTagRegex.find(rawText)
+                if (imgMatch != null) {
+                    if (imageUrl.isNullOrBlank()) {
+                        imageUrl = imgMatch.groupValues[1].trim()
+                    }
+                    rawText = rawText.replace(imgMatch.value, "").trim()
+                }
 
                 // Parse Options: supports JSON array, string array, or separate fields (opt_a, opt_b, opt_c, opt_d)
                 val options = parseOptions(obj)
@@ -362,7 +448,7 @@ class SupabaseDataSource(
                         id = id,
                         testId = itemTestId,
                         questionIndex = questionIndex,
-                        text = text,
+                        text = rawText,
                         options = options,
                         correctIndex = correctIndex.coerceIn(0, (options.size - 1).coerceAtLeast(0)),
                         explanation = explanation,
@@ -370,15 +456,15 @@ class SupabaseDataSource(
                         marks = marks,
                         textHindi = textHindi,
                         optionsHindi = optionsHindi,
-                        explanationHindi = explanationHindi
+                        explanationHindi = explanationHindi,
+                        imageUrl = imageUrl
                     )
                 )
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing questions JSON: ${e.message}")
-            return Result.failure(e)
         }
-        return Result.success(list)
+        return list
     }
 
     suspend fun saveOrUpdateTest(test: Test): Result<Test> {
@@ -517,12 +603,11 @@ class SupabaseDataSource(
         className: String,
         dateKey: String
     ): Result<com.jacboard.mcqmaster.model.DailyRollNoResult> {
+        val safeStudentId = studentId.replace(Regex("[^a-zA-Z0-9_\\-]"), "")
+        val safeDateKey = dateKey.replace(Regex("[^0-9\\-]"), "")
+
         // 1. First, check if this student ALREADY completed a test today in daily_participants
-        val existingQuery = if (studentName.isNotBlank() && studentName != "Student") {
-            "or=(student_id.eq.$studentId,student_name.eq.$studentName)&date_key=eq.$dateKey&has_attempted=eq.true&select=*"
-        } else {
-            "student_id=eq.$studentId&date_key=eq.$dateKey&has_attempted=eq.true&select=*"
-        }
+        val existingQuery = "student_id=eq.$safeStudentId&date_key=eq.$safeDateKey&has_attempted=eq.true&select=*"
         val checkRes = client.get("daily_participants", existingQuery)
         if (checkRes.isSuccess) {
             try {
@@ -554,11 +639,7 @@ class SupabaseDataSource(
         }
 
         // 2. Also check if already submitted in leaderboard
-        val leadQuery = if (studentName.isNotBlank() && studentName != "Student") {
-            "or=(student_id.eq.$studentId,student_name.eq.$studentName)&date_key=eq.$dateKey&select=*"
-        } else {
-            "student_id=eq.$studentId&date_key=eq.$dateKey&select=*"
-        }
+        val leadQuery = "student_id=eq.$safeStudentId&date_key=eq.$safeDateKey&select=*"
         val leadRes = client.get("leaderboard", leadQuery)
         if (leadRes.isSuccess) {
             try {
@@ -1135,7 +1216,9 @@ class SupabaseDataSource(
                             if (colName != "id" && colName != "key" && colName != "value" && colName != "updated_at" && colName != "created_at") {
                                 val colVal = obj.optString(colName, "")
                                 if (colVal.isNotBlank() && colVal != "null") {
-                                    map.putIfAbsent(colName, colVal)
+                                    if (!map.containsKey(colName)) {
+                                        map[colName] = colVal
+                                    }
                                 }
                             }
                         }
@@ -1146,6 +1229,29 @@ class SupabaseDataSource(
                 }
             }
         }
+
+        // Also check __system_app_config__ fallback row in notifications (used by Admin Panel when app_config RLS is read-only)
+        try {
+            val sysRes = client.get("notifications", "id=eq.__system_app_config__&select=message&limit=1")
+            if (sysRes.isSuccess) {
+                val arr = JSONArray(sysRes.getOrThrow())
+                if (arr.length() > 0) {
+                    val msg = arr.getJSONObject(0).optString("message", "")
+                    if (msg.isNotBlank()) {
+                        val cfgObj = JSONObject(msg)
+                        val iter = cfgObj.keys()
+                        while (iter.hasNext()) {
+                            val k = iter.next()
+                            val v = cfgObj.optString(k, "")
+                            if (k.isNotBlank() && v.isNotBlank()) {
+                                map[k] = v
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
         return Result.success(map)
     }
 
@@ -1169,6 +1275,7 @@ class SupabaseDataSource(
             if (!body.isNullOrBlank()) {
                 val parsed = parsePromotionalBannersJson(body, classId)
                 if (parsed.isNotEmpty()) {
+                    com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveContentCache("banners_${classId ?: "all"}", body)
                     return Result.success(parsed)
                 }
             }
@@ -1184,12 +1291,41 @@ class SupabaseDataSource(
             if (!bannersJson.isNullOrBlank()) {
                 val parsed = parsePromotionalBannersJson(bannersJson, classId)
                 if (parsed.isNotEmpty()) {
+                    com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveContentCache("banners_${classId ?: "all"}", bannersJson)
                     return Result.success(parsed)
                 }
             }
         }
 
         return Result.success(emptyList())
+    }
+
+    fun loadCachedPromotionalBanners(classId: String? = null): List<PromotionalBanner> {
+        val raw = com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.getContentCache("banners_${classId ?: "all"}") ?: return emptyList()
+        return parsePromotionalBannersJson(raw, classId)
+    }
+
+    private fun isLikelyImageUrl(candidate: String?): Boolean {
+        val s = candidate?.trim()?.takeIf { it.isNotBlank() && it != "null" } ?: return false
+        if (s.startsWith("data:image/", ignoreCase = true)) return true
+        if (!s.startsWith("http://", ignoreCase = true) && !s.startsWith("https://", ignoreCase = true)) return false
+        val lower = s.substringBefore('?').substringBefore('#').lowercase()
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") ||
+            lower.endsWith(".webp") || lower.endsWith(".gif") || lower.endsWith(".svg") ||
+            lower.endsWith(".avif") || lower.endsWith(".bmp")
+        ) {
+            return true
+        }
+        val fullLower = s.lowercase()
+        return fullLower.contains("/storage/v1/object/") ||
+            fullLower.contains("imgur.com") ||
+            fullLower.contains("ibb.co") ||
+            fullLower.contains("postimg.cc") ||
+            fullLower.contains("cloudinary.com") ||
+            fullLower.contains("unsplash.com") ||
+            fullLower.contains("pexels.com") ||
+            fullLower.contains("googleusercontent.com") ||
+            fullLower.contains("drive.google.com/uc")
     }
 
     private fun parsePromotionalBannersJson(jsonString: String, classId: String?): List<PromotionalBanner> {
@@ -1212,16 +1348,60 @@ class SupabaseDataSource(
 
                 val id = obj.optString("id", obj.optString("banner_id", "banner_${i + 1}"))
                 val rawAction = obj.optString("action_type", obj.optString("actionType", obj.optString("type", obj.optString("action", "")))).uppercase().trim()
-                val rawUrl = obj.optString("url", obj.optString("link", obj.optString("action_url", obj.optString("target_url", obj.optString("redirect_url", ""))))).trim().takeIf { it.isNotBlank() }
-                val rawTargetId = obj.optString("target_id", obj.optString("targetId", obj.optString("target", obj.optString("page_id", "")))).trim().takeIf { it.isNotBlank() }
+                var rawUrl = obj.optString("url", obj.optString("link", obj.optString("action_url", obj.optString("target_url", obj.optString("redirect_url", ""))))).trim().takeIf { it.isNotBlank() && it != "null" }
+                var rawTargetId = obj.optString("target_id", obj.optString("targetId", obj.optString("target", obj.optString("page_id", "")))).trim().takeIf { it.isNotBlank() && it != "null" }
+
+                // 1. Direct image_url column if present
+                var imageUrl = obj.optString(
+                    "image_url",
+                    obj.optString("imageUrl", obj.optString("image", obj.optString("banner_image", obj.optString("bg_image", obj.optString("photo_url", "")))))
+                ).trim().takeIf { it.isNotBlank() && it != "null" }
+
+                var rawMetaText = obj.optString(
+                    "meta_text",
+                    obj.optString("metaText", obj.optString("meta", obj.optString("right_tag", obj.optString("subtitle_top", ""))))
+                ).trim()
+
+                // 2. Check if meta_text embeds [IMG:...] or is directly an image URL
+                val imgTagRegex = Regex("""\[IMG:([^\]]+)]""", RegexOption.IGNORE_CASE)
+                val metaImgMatch = imgTagRegex.find(rawMetaText)
+                if (metaImgMatch != null) {
+                    if (imageUrl.isNullOrBlank()) {
+                        imageUrl = metaImgMatch.groupValues[1].trim()
+                    }
+                    rawMetaText = rawMetaText.replace(metaImgMatch.value, "").trim()
+                } else if (imageUrl.isNullOrBlank() && (rawMetaText.startsWith("http://", ignoreCase = true) || rawMetaText.startsWith("https://", ignoreCase = true) || rawMetaText.startsWith("data:image/", ignoreCase = true))) {
+                    imageUrl = rawMetaText
+                    rawMetaText = ""
+                }
+
+                val rawBadge = obj.optString(
+                    "badge_text",
+                    obj.optString("badgeText", obj.optString("badge", obj.optString("tag", "")))
+                ).trim()
+
+                // 3. Check if action_type is IMAGE_BANNER / IMAGE or url points to an image
+                val isImageAction = rawAction.contains("IMAGE") || rawBadge.equals("IMAGE", ignoreCase = true)
+                if (imageUrl.isNullOrBlank() && !rawUrl.isNullOrBlank() && (isImageAction || isLikelyImageUrl(rawUrl))) {
+                    imageUrl = rawUrl
+                    // If target_id holds a click destination URL, promote it to rawUrl for click navigation
+                    if (!rawTargetId.isNullOrBlank() && (rawTargetId.startsWith("http://", ignoreCase = true) || rawTargetId.startsWith("https://", ignoreCase = true))) {
+                        rawUrl = rawTargetId
+                    } else if (isImageAction) {
+                        rawUrl = null
+                    }
+                }
 
                 val actionType = when {
-                    rawAction.contains("DAILY") -> BannerActionType.OPEN_DAILY_TEST
+                    rawAction.contains("DAILY") || rawTargetId.equals("daily_test", ignoreCase = true) -> BannerActionType.OPEN_DAILY_TEST
                     rawAction.contains("VIDEO") || rawAction.contains("YOUTUBE") || (rawUrl?.contains("youtube.com", ignoreCase = true) == true) || (rawUrl?.contains("youtu.be", ignoreCase = true) == true) -> BannerActionType.OPEN_VIDEO
-                    rawAction.contains("WEB") || rawAction.contains("URL") || rawAction.contains("LINK") || rawAction.contains("EXTERNAL") || rawAction.contains("TELEGRAM") -> BannerActionType.OPEN_WEBSITE
-                    rawAction.contains("INTERNAL") || rawAction.contains("PAGE") || rawAction.contains("CATEGOR") -> BannerActionType.OPEN_INTERNAL_PAGE
+                    rawAction.contains("INTERNAL") || rawAction.contains("PAGE") || rawAction.contains("CATEGOR") ||
+                        rawTargetId.equals("mock_tests", ignoreCase = true) || rawTargetId.equals("subject_wise", ignoreCase = true) || rawTargetId.equals("categories", ignoreCase = true) -> BannerActionType.OPEN_INTERNAL_PAGE
                     rawAction.contains("TEST") -> BannerActionType.OPEN_TEST
-                    !rawUrl.isNullOrBlank() -> BannerActionType.OPEN_WEBSITE
+                    rawAction.contains("WEB") || rawAction.contains("URL") || rawAction.contains("LINK") || rawAction.contains("EXTERNAL") || rawAction.contains("TELEGRAM") -> BannerActionType.OPEN_WEBSITE
+                    isImageAction && rawUrl.isNullOrBlank() -> BannerActionType.IMAGE_BANNER
+                    !rawUrl.isNullOrBlank() && rawUrl != imageUrl -> BannerActionType.OPEN_WEBSITE
+                    !imageUrl.isNullOrBlank() -> BannerActionType.IMAGE_BANNER
                     else -> BannerActionType.NONE
                 }
 
@@ -1233,31 +1413,41 @@ class SupabaseDataSource(
                     )
                 )
 
-                val badgeText = obj.optString(
-                    "badge_text",
-                    obj.optString("badgeText", obj.optString("badge", obj.optString("tag", if (isDailyChallenge) "TODAY'S CHALLENGE" else "FEATURED")))
-                ).ifBlank { if (isDailyChallenge) "TODAY'S CHALLENGE" else "FEATURED" }
-
-                val metaText = obj.optString(
-                    "meta_text",
-                    obj.optString("metaText", obj.optString("meta", obj.optString("right_tag", obj.optString("subtitle_top", ""))))
-                )
-
-                val title = obj.optString(
+                val rawTitle = obj.optString(
                     "title",
                     obj.optString("heading", obj.optString("name", obj.optString("banner_title", "")))
-                )
-                if (title.isBlank()) continue
+                ).trim()
+
+                // Allow blank title if imageUrl is provided (pure image banner)
+                if (rawTitle.isBlank() && imageUrl.isNullOrBlank()) continue
+                val title = if (rawTitle.equals("IMAGE", ignoreCase = true) && !imageUrl.isNullOrBlank()) "" else rawTitle
 
                 val description = obj.optString(
                     "description",
                     obj.optString("subtitle", obj.optString("body", obj.optString("content", obj.optString("text", ""))))
-                )
+                ).trim()
 
-                val buttonText = obj.optString(
+                val isPureImage = !imageUrl.isNullOrBlank() && title.isBlank() && description.isBlank()
+
+                val badgeText = when {
+                    rawBadge.equals("IMAGE", ignoreCase = true) && isPureImage -> ""
+                    rawBadge.isNotBlank() -> rawBadge
+                    isPureImage -> ""
+                    isDailyChallenge -> "TODAY'S CHALLENGE"
+                    else -> "FEATURED"
+                }
+
+                val rawButton = obj.optString(
                     "button_text",
                     obj.optString("buttonText", obj.optString("cta_text", obj.optString("cta", obj.optString("btn_text", ""))))
-                ).takeIf { it.isNotBlank() } ?: if (isDailyChallenge) "Start Test" else "Explore"
+                ).trim()
+
+                val buttonText = when {
+                    rawButton.isNotBlank() -> rawButton
+                    isPureImage -> null
+                    isDailyChallenge -> "Start Test"
+                    else -> "Explore"
+                }
 
                 val order = obj.optInt("display_order", obj.optInt("order_index", obj.optInt("order", i + 1)))
 
@@ -1266,10 +1456,12 @@ class SupabaseDataSource(
                         id = id,
                         isDailyChallenge = isDailyChallenge,
                         badgeText = badgeText,
-                        metaText = metaText,
+                        metaText = rawMetaText,
                         title = title,
                         description = description,
                         buttonText = buttonText,
+                        imageUrl = imageUrl,
+                        gradientIndex = i,
                         actionType = actionType,
                         targetId = rawTargetId,
                         url = rawUrl
@@ -1283,25 +1475,32 @@ class SupabaseDataSource(
     }
 
     /**
-     * Saves or updates a promotional banner in Supabase.
+     * Saves or updates a promotional banner in Supabase using exact promotional_banners schema columns.
      */
     suspend fun saveOrUpdateBanner(banner: PromotionalBanner, classId: String? = null): Result<PromotionalBanner> {
         if (!SupabaseConfig.isConfigured) return Result.success(banner)
+        val hasImg = !banner.imageUrl.isNullOrBlank()
+        val effectiveMeta = if (hasImg && !banner.url.isNullOrBlank() && banner.url != banner.imageUrl) {
+            if (banner.metaText.isBlank()) banner.imageUrl!! else "${banner.metaText} [IMG:${banner.imageUrl}]"
+        } else {
+            banner.metaText
+        }
+        val effectiveUrl = if (hasImg && (banner.url.isNullOrBlank() || banner.actionType == BannerActionType.IMAGE_BANNER)) {
+            banner.imageUrl!!
+        } else {
+            banner.url ?: ""
+        }
         val json = JSONObject().apply {
             put("id", banner.id)
-            put("title", banner.title)
+            put("title", banner.title.ifBlank { if (hasImg) "IMAGE" else "Banner" })
             put("description", banner.description)
-            put("badge_text", banner.badgeText)
-            put("meta_text", banner.metaText)
+            put("badge_text", banner.badgeText.ifBlank { if (hasImg) "IMAGE" else "FEATURED" })
+            put("meta_text", effectiveMeta)
             put("button_text", banner.buttonText ?: "")
-            put("is_daily_challenge", banner.isDailyChallenge)
-            put("action_type", banner.actionType.name)
-            put("target_id", banner.targetId ?: "")
-            put("url", banner.url ?: "")
+            put("action_type", if (banner.isDailyChallenge) BannerActionType.OPEN_DAILY_TEST.name else banner.actionType.name)
+            put("target_id", banner.targetId ?: if (banner.isDailyChallenge) "daily_test" else "")
+            put("url", effectiveUrl)
             put("is_active", true)
-            if (!classId.isNullOrBlank()) {
-                put("class_id", classId)
-            }
         }
         val candidateTables = listOf("promotional_banners", "banners", "hero_banners", "home_banners")
         var lastError: Throwable? = null
@@ -1338,12 +1537,21 @@ class SupabaseDataSource(
         val result = client.get("notifications", "select=*&order=created_at.desc&limit=20")
         if (result.isFailure) {
             val fallback = client.get("notifications", "select=*")
-            if (fallback.isFailure) return Result.success(emptyList())
-            val list = parseNotificationsJson(fallback.getOrThrow())
-            return Result.success(list)
+            if (fallback.isFailure) {
+                return Result.success(loadCachedNotifications())
+            }
+            val raw = fallback.getOrThrow()
+            com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveContentCache("notifications", raw)
+            return Result.success(parseNotificationsJson(raw))
         }
-        val list = parseNotificationsJson(result.getOrThrow())
-        return Result.success(list)
+        val raw = result.getOrThrow()
+        com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveContentCache("notifications", raw)
+        return Result.success(parseNotificationsJson(raw))
+    }
+
+    fun loadCachedNotifications(): List<NotificationItem> {
+        val raw = com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.getContentCache("notifications") ?: return emptyList()
+        return parseNotificationsJson(raw)
     }
 
     private fun parseNotificationsJson(jsonString: String): List<NotificationItem> {
@@ -1353,10 +1561,11 @@ class SupabaseDataSource(
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
                 val id = obj.optString("id", "n_$i")
+                val type = obj.optString("type", "ANNOUNCEMENT")
+                if (id == "__system_app_config__" || type == "SYSTEM_CONFIG") continue
                 val title = obj.optString("title", "Announcement")
                 val message = obj.optString("message", obj.optString("body", ""))
                 val timestamp = obj.optString("timestamp", obj.optString("created_at", "Just now"))
-                val type = obj.optString("type", "ANNOUNCEMENT")
                 val isRead = obj.optBoolean("is_read", false)
                 list.add(NotificationItem(id, title, message, timestamp, type, isRead))
             }

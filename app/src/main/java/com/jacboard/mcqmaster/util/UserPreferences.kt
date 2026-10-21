@@ -261,6 +261,52 @@ class UserPreferences private constructor(context: Context) {
         }
     }
 
+    /**
+     * Fast local content cache for static/academic entities (Classes, Categories, Subjects,
+     * Chapters, Tests, Questions, Hero Banners, Notifications).
+     * NOTE: Daily Leaderboard is strictly NEVER cached here.
+     */
+    fun saveContentCache(cacheKey: String, jsonPayload: String) {
+        if (cacheKey.contains("leaderboard", ignoreCase = true)) return
+        prefs.edit()
+            .putString("content_cache_$cacheKey", jsonPayload)
+            .putLong("content_cache_ts_$cacheKey", System.currentTimeMillis())
+            .apply()
+    }
+
+    fun getContentCache(cacheKey: String): String? {
+        if (cacheKey.contains("leaderboard", ignoreCase = true)) return null
+        return prefs.getString("content_cache_$cacheKey", null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun removeContentCache(cacheKey: String) {
+        prefs.edit()
+            .remove("content_cache_$cacheKey")
+            .remove("content_cache_ts_$cacheKey")
+            .apply()
+    }
+
+    fun getCacheVersion(): String = prefs.getString("remote_cache_version", "") ?: ""
+
+    fun saveCacheVersion(version: String) {
+        prefs.edit().putString("remote_cache_version", version.trim()).apply()
+    }
+
+    /**
+     * Clears all cached content and leaderboard keys (triggered locally or remotely by Admin Panel "Clear All Cache").
+     */
+    fun clearAllContentCaches() {
+        val allKeys = prefs.all.keys.toList()
+        val keysToRemove = allKeys.filter { key ->
+            key.startsWith("content_cache_") || key.startsWith("cached_leaderboard_")
+        }
+        if (keysToRemove.isNotEmpty()) {
+            val editor = prefs.edit()
+            keysToRemove.forEach { editor.remove(it) }
+            editor.apply()
+        }
+    }
+
     fun saveLastSubmissionId(dateKey: String, submissionId: Long) {
         clearAllLeaderboardCaches(dateKey)
         prefs.edit()

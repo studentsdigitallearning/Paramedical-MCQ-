@@ -9,17 +9,21 @@ CREATE TABLE IF NOT EXISTS public.promotional_banners (
     is_daily_challenge boolean NOT NULL DEFAULT false,
     badge_text text NOT NULL DEFAULT 'FEATURED',
     meta_text text NOT NULL DEFAULT '',
-    title text NOT NULL,
+    title text NOT NULL DEFAULT '',
     description text NOT NULL DEFAULT '',
     button_text text DEFAULT 'Explore',
-    action_type text NOT NULL DEFAULT 'NONE', -- OPEN_DAILY_TEST, OPEN_TEST, OPEN_INTERNAL_PAGE, OPEN_WEBSITE, OPEN_VIDEO
+    action_type text NOT NULL DEFAULT 'NONE', -- OPEN_DAILY_TEST, OPEN_TEST, OPEN_INTERNAL_PAGE, OPEN_WEBSITE, OPEN_VIDEO, IMAGE_BANNER
     target_id text,
     url text,
+    image_url text,
     display_order int NOT NULL DEFAULT 1,
     is_active boolean NOT NULL DEFAULT true,
     created_at timestamptz DEFAULT now(),
     updated_at timestamptz DEFAULT now()
 );
+
+ALTER TABLE public.promotional_banners ADD COLUMN IF NOT EXISTS image_url text;
+ALTER TABLE public.questions ADD COLUMN IF NOT EXISTS image_url text;
 
 -- Index for ordering and filtering
 CREATE INDEX IF NOT EXISTS idx_promotional_banners_order ON public.promotional_banners(display_order ASC, is_active);

@@ -214,6 +214,10 @@ class AppRepository private constructor() {
         // Sync initial streak calculation (Device-local)
         recalculateMonthlyStreakState()
 
+        // Hydrate academic & UI content from local cache immediately (< 10ms) for instant startup
+        // Note: Daily Leaderboard is strictly NEVER cached and always fetched live in real-time
+        hydrateFromLocalCache()
+
         // Clean up previous-day records and unattempted dummy rows in Supabase at startup
         repositoryScope.launch {
             try {
@@ -229,11 +233,83 @@ class AppRepository private constructor() {
         // Check daily eligibility immediately for today's date
         checkDailyEligibility()
 
-        // Initial leaderboard load from cache & network
+        // Initial live leaderboard load from network
         refreshLeaderboard()
 
-        // Connect Supabase Realtime for live Leaderboard & Tests
+        // Connect Supabase Realtime for live Leaderboard, Tests, Banners & Admin Cache Clear
         setupRealtime()
+    }
+
+    /**
+     * Hydrates static/academic content from local disk cache for instant UI rendering (< 10ms),
+     * while background network sync fetches any updates. Daily Leaderboard is strictly excluded.
+     */
+    private fun hydrateFromLocalCache() {
+        try {
+            val cachedClasses = supabaseDataSource.loadCachedClasses()
+            if (cachedClasses.isNotEmpty()) {
+                _classes.value = cachedClasses
+            }
+            val cachedCategories = supabaseDataSource.loadCachedCategories()
+            if (cachedCategories.isNotEmpty()) {
+                _categories.value = cachedCategories
+            }
+            val currentClassId = _student.value.selectedClassId
+            if (currentClassId.isNotBlank()) {
+                val cachedSubjects = supabaseDataSource.loadCachedSubjects(currentClassId)
+                if (cachedSubjects.isNotEmpty()) {
+                    _subjects.value = cachedSubjects
+                }
+                val cachedTests = supabaseDataSource.loadCachedTests(currentClassId)
+                if (cachedTests.isNotEmpty()) {
+                    _tests.value = cachedTests
+                }
+                val cachedBanners = supabaseDataSource.loadCachedPromotionalBanners(currentClassId)
+                if (cachedBanners.isNotEmpty()) {
+                    _promotionalBanners.value = cachedBanners
+                }
+            }
+            val cachedNotifications = supabaseDataSource.loadCachedNotifications()
+            if (cachedNotifications.isNotEmpty()) {
+                _notifications.value = cachedNotifications
+            }
+        } catch (e: Exception) {
+            Log.w("AppRepository", "hydrateFromLocalCache error: ${e.message}")
+        }
+    }
+
+    /**
+     * Clears all local content and in-memory caches (excluding student profile) and reloads fresh from Supabase.
+     * Can be triggered from the Admin Panel ("Clear All Cache") or locally.
+     */
+    fun clearAllCachesAndReload() {
+        com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.clearAllContentCaches()
+        com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.clearAllLeaderboardCaches(_dailyDateKey.value)
+        _chaptersCache.clear()
+        _questionsCache.clear()
+        _chaptersState.value = emptyMap()
+        syncFromSupabase()
+    }
+
+    private fun checkRemoteCacheClear(configMap: Map<String, String>) {
+        val remoteCacheVersion = (
+            configMap["cache_version"]
+                ?: configMap["clear_cache_timestamp"]
+                ?: configMap["force_clear_cache"]
+                ?: configMap["cacheVersion"]
+            )?.trim().orEmpty()
+
+        if (remoteCacheVersion.isNotBlank()) {
+            val prefs = com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()
+            val savedVersion = prefs?.getCacheVersion().orEmpty()
+            if (savedVersion != remoteCacheVersion) {
+                prefs?.saveCacheVersion(remoteCacheVersion)
+                if (savedVersion.isNotBlank()) {
+                    Log.d("AppRepository", "Remote Admin Clear All Cache detected ($remoteCacheVersion). Purging local caches...")
+                    clearAllCachesAndReload()
+                }
+            }
+        }
     }
 
     private fun setupRealtime() {
@@ -258,14 +334,26 @@ class AppRepository private constructor() {
             realtimeClient.addTestListener {
                 repositoryScope.launch {
                     try {
+                        _chaptersCache.clear()
+                        _questionsCache.clear()
+                        _chaptersState.value = emptyMap()
+                        val classesRes = supabaseDataSource.fetchClasses()
+                        if (classesRes.isSuccess) _classes.value = classesRes.getOrThrow()
+                        val categoriesRes = supabaseDataSource.fetchCategories()
+                        if (categoriesRes.isSuccess) _categories.value = categoriesRes.getOrThrow()
+
                         val currentClassId = _student.value.selectedClassId
-                        val res = supabaseDataSource.fetchTests(currentClassId)
-                        if (res.isSuccess) {
-                            _tests.value = res.getOrThrow()
+                        if (currentClassId.isNotBlank()) {
+                            val subRes = supabaseDataSource.fetchSubjects(currentClassId)
+                            if (subRes.isSuccess) _subjects.value = subRes.getOrThrow()
+                            val res = supabaseDataSource.fetchTests(currentClassId)
+                            if (res.isSuccess) {
+                                _tests.value = res.getOrThrow()
+                            }
                         }
                         refreshPromotionalBanners(currentClassId)
                     } catch (e: Exception) {
-                        Log.w("AppRepository", "Test realtime update error: ${e.message}")
+                        Log.w("AppRepository", "Test/Content realtime update error: ${e.message}")
                     }
                 }
             }
@@ -274,7 +362,13 @@ class AppRepository private constructor() {
                     try {
                         val configRes = supabaseDataSource.fetchAppConfig()
                         if (configRes.isSuccess) {
-                            com.jacboard.mcqmaster.util.AppConfig.updateFromRemoteMap(configRes.getOrThrow())
+                            val map = configRes.getOrThrow()
+                            com.jacboard.mcqmaster.util.AppConfig.updateFromRemoteMap(map)
+                            checkRemoteCacheClear(map)
+                        }
+                        val notifRes = supabaseDataSource.fetchNotifications()
+                        if (notifRes.isSuccess) {
+                            _notifications.value = notifRes.getOrThrow()
                         }
                         refreshPromotionalBanners(_student.value.selectedClassId)
                     } catch (e: Exception) {
@@ -382,11 +476,13 @@ class AppRepository private constructor() {
                     }
                 } catch (_: Exception) {}
 
-                // 8. Load Dynamic App Config (maintenance mode, custom urls, etc.)
+                // 8. Load Dynamic App Config (maintenance mode, custom urls, remote cache clear, etc.)
                 try {
                     val configRes = supabaseDataSource.fetchAppConfig()
                     if (configRes.isSuccess) {
-                        com.jacboard.mcqmaster.util.AppConfig.updateFromRemoteMap(configRes.getOrThrow())
+                        val map = configRes.getOrThrow()
+                        com.jacboard.mcqmaster.util.AppConfig.updateFromRemoteMap(map)
+                        checkRemoteCacheClear(map)
                     }
                 } catch (_: Exception) {}
 
@@ -666,8 +762,7 @@ class AppRepository private constructor() {
 
         peers.forEach { peer ->
             val isUserPeer = (peer.studentId == currentUserId) ||
-                (!userRollNo.isNullOrBlank() && !peer.rollNo.isNullOrBlank() && peer.rollNo == userRollNo) ||
-                (currentUserName.isNotBlank() && currentUserName != "Student" && peer.studentName.equals(currentUserName, ignoreCase = true))
+                (!userRollNo.isNullOrBlank() && !peer.rollNo.isNullOrBlank() && peer.rollNo == userRollNo)
 
             val isMatch = com.jacboard.mcqmaster.util.CourseClassUtils.isMatch(
                 targetClass = targetClass?.name.orEmpty(),
@@ -801,6 +896,14 @@ class AppRepository private constructor() {
         _student.update { it.copy(selectedClassId = classId, courseName = courseName) }
         com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.updateClass(courseName, classId, className)
 
+        // Hydrate cached subjects, tests, and banners for newly selected class immediately (< 5ms)
+        val cachedSubjects = supabaseDataSource.loadCachedSubjects(classId)
+        if (cachedSubjects.isNotEmpty()) _subjects.value = cachedSubjects
+        val cachedTests = supabaseDataSource.loadCachedTests(classId)
+        if (cachedTests.isNotEmpty()) _tests.value = cachedTests
+        val cachedBanners = supabaseDataSource.loadCachedPromotionalBanners(classId)
+        if (cachedBanners.isNotEmpty()) _promotionalBanners.value = cachedBanners
+
         _dailyPeerList.value = emptyList()
         recalculateDailyLeaderboard()
 
@@ -830,24 +933,18 @@ class AppRepository private constructor() {
     private suspend fun refreshPromotionalBanners(classId: String?) {
         try {
             val bannersRes = supabaseDataSource.fetchPromotionalBanners(classId)
-            val remoteBanners = bannersRes.getOrNull().orEmpty()
-            if (remoteBanners.isNotEmpty()) {
-                _promotionalBanners.value = remoteBanners
-            } else {
-                // If no remote banners exist in Supabase, provide the 3 app-tailored default banners
+            if (bannersRes.isSuccess) {
+                val remoteBanners = bannersRes.getOrThrow()
                 val dailyTest = getDailyTest()
-                val defaults = PromotionalBanner.defaultBanners.map { banner ->
-                    if (banner.isDailyChallenge && dailyTest != null && dailyTest.questionCount > 0) {
+                _promotionalBanners.value = remoteBanners.map { banner ->
+                    if (banner.isDailyChallenge && dailyTest != null && dailyTest.questionCount > 0 && banner.metaText.isBlank()) {
                         banner.copy(
-                            metaText = "${dailyTest.questionCount} Questions • ${dailyTest.durationMinutes} Minutes",
-                            title = dailyTest.title.ifBlank { banner.title },
-                            description = dailyTest.subtitle.ifBlank { banner.description }
+                            metaText = "${dailyTest.questionCount} Questions • ${dailyTest.durationMinutes} Minutes"
                         )
                     } else {
                         banner
                     }
                 }
-                _promotionalBanners.value = defaults
             }
         } catch (e: Exception) {
             Log.w("AppRepository", "refreshPromotionalBanners error: ${e.message}")
@@ -958,10 +1055,10 @@ class AppRepository private constructor() {
         val stateList = _chaptersState.value[subjectId]
         if (!stateList.isNullOrEmpty()) return stateList
 
-        val cached = _chaptersCache[subjectId]
+        val cached = _chaptersCache[subjectId] ?: supabaseDataSource.loadCachedChapters(subjectId).takeIf { it.isNotEmpty() }
         if (cached != null && cached.isNotEmpty()) {
+            _chaptersCache[subjectId] = cached
             _chaptersState.update { it + (subjectId to cached) }
-            return cached
         }
 
         val result = supabaseDataSource.fetchChapters(subjectId)
@@ -972,15 +1069,16 @@ class AppRepository private constructor() {
             return list
         }
 
-        return emptyList()
+        return cached ?: emptyList()
     }
 
     fun getChapters(subjectId: String): List<Chapter> {
         val stateList = _chaptersState.value[subjectId]
         if (!stateList.isNullOrEmpty()) return stateList
 
-        val cached = _chaptersCache[subjectId]
+        val cached = _chaptersCache[subjectId] ?: supabaseDataSource.loadCachedChapters(subjectId).takeIf { it.isNotEmpty() }
         if (cached != null && cached.isNotEmpty()) {
+            _chaptersCache[subjectId] = cached
             _chaptersState.update { it + (subjectId to cached) }
             return cached
         }
@@ -1053,8 +1151,11 @@ class AppRepository private constructor() {
     }
 
     fun getQuestionsForTest(testId: String): List<Question> {
-        val cached = _questionsCache[testId]
-        if (cached != null && cached.isNotEmpty()) return cached
+        val cached = _questionsCache[testId] ?: supabaseDataSource.loadCachedQuestions(testId).takeIf { it.isNotEmpty() }
+        if (cached != null && cached.isNotEmpty()) {
+            _questionsCache[testId] = cached
+            return cached
+        }
 
         // Trigger asynchronous fetch from Supabase
         repositoryScope.launch {
@@ -1078,8 +1179,9 @@ class AppRepository private constructor() {
     }
 
     suspend fun prefetchQuestionsForTest(testId: String): List<Question> {
-        val cached = _questionsCache[testId]
+        val cached = _questionsCache[testId] ?: supabaseDataSource.loadCachedQuestions(testId).takeIf { it.isNotEmpty() }
         if (cached != null && cached.isNotEmpty()) {
+            _questionsCache[testId] = cached
             _activeAttempt.update { current ->
                 if (current != null && current.testId == testId && current.shuffledQuestions.isEmpty()) {
                     val ordered = cached
@@ -1265,7 +1367,12 @@ class AppRepository private constructor() {
         }
 
         val safeScore = maxOf(0f, totalScore)
-        val percentage = ((safeScore / test.totalMarks) * 100).toInt()
+        val effectiveTotalMarks = if (test.totalMarks > 0f) {
+            test.totalMarks
+        } else {
+            questions.sumOf { it.marks.toDouble() }.toFloat().coerceAtLeast(1f)
+        }
+        val percentage = ((safeScore / effectiveTotalMarks) * 100).toInt().coerceIn(0, 100)
 
         val timeTaken = if (attempt != null) {
             val elapsed = (System.currentTimeMillis() - attempt.startedAtEpoch) / 1000L
@@ -1279,7 +1386,7 @@ class AppRepository private constructor() {
             testId = test.id,
             testTitle = test.title,
             score = safeScore,
-            totalMarks = test.totalMarks,
+            totalMarks = effectiveTotalMarks,
             percentage = percentage,
             correctCount = correctCount,
             wrongCount = wrongCount,

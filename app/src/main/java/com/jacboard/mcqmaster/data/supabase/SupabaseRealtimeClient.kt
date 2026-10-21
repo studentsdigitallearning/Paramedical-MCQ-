@@ -121,15 +121,22 @@ class SupabaseRealtimeClient private constructor() {
     }
 
     private fun subscribeToChannels(ws: WebSocket) {
-        // Subscribe to public:leaderboard and public:daily_participants
+        // Subscribe to public:leaderboard and public:daily_participants (Real-time, never cached)
         sendJoin(ws, "realtime:public:leaderboard")
         sendJoin(ws, "realtime:public:daily_participants")
-        // Subscribe to public:tests
+        // Subscribe to academic & test content tables
+        sendJoin(ws, "realtime:public:classes")
+        sendJoin(ws, "realtime:public:categories")
+        sendJoin(ws, "realtime:public:subjects")
+        sendJoin(ws, "realtime:public:chapters")
         sendJoin(ws, "realtime:public:tests")
-        // Subscribe to public:promotional_banners and public:banners
+        sendJoin(ws, "realtime:public:questions")
+        // Subscribe to banners, notifications, and app_config (including remote Clear All Cache trigger)
         sendJoin(ws, "realtime:public:promotional_banners")
         sendJoin(ws, "realtime:public:banners")
         sendJoin(ws, "realtime:public:hero_banners")
+        sendJoin(ws, "realtime:public:notifications")
+        sendJoin(ws, "realtime:public:app_config")
     }
 
     private fun sendJoin(ws: WebSocket, topic: String) {
@@ -177,11 +184,18 @@ class SupabaseRealtimeClient private constructor() {
             if (topic.contains("leaderboard") || topic.contains("daily_participants")) {
                 Log.d(TAG, "Realtime event on leaderboard/daily_participants: $event")
                 notifyLeaderboardChanged()
-            } else if (topic.contains("tests")) {
-                Log.d(TAG, "Realtime event on tests: $event")
+            } else if (
+                topic.contains("tests") ||
+                topic.contains("questions") ||
+                topic.contains("classes") ||
+                topic.contains("categories") ||
+                topic.contains("subjects") ||
+                topic.contains("chapters")
+            ) {
+                Log.d(TAG, "Realtime event on academic content ($topic): $event")
                 notifyTestsChanged()
-            } else if (topic.contains("banner")) {
-                Log.d(TAG, "Realtime event on banners: $event")
+            } else if (topic.contains("banner") || topic.contains("app_config") || topic.contains("notifications")) {
+                Log.d(TAG, "Realtime event on banners/config/notifications ($topic): $event")
                 notifyBannersChanged()
             }
         } catch (e: Exception) {

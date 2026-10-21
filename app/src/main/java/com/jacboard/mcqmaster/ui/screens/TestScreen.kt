@@ -79,6 +79,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -86,6 +87,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.jacboard.mcqmaster.model.Attempt
 import com.jacboard.mcqmaster.model.Question
 import com.jacboard.mcqmaster.model.Test
@@ -573,8 +576,8 @@ fun TestScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 4.dp)
             ) {
-                // Question Card (Clean, Single Language)
-                Box(
+                // Question Card (Clean, Single Language + Optional Question Image)
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(18.dp))
@@ -582,13 +585,36 @@ fun TestScreen(
                         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(18.dp))
                         .padding(18.dp)
                 ) {
-                    Text(
-                        text = questionDisplayTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        lineHeight = 24.sp
-                    )
+                    val cleanTitle = remember(questionDisplayTitle) {
+                        questionDisplayTitle.replace(Regex("\\[IMG:[^\\]]+\\]", RegexOption.IGNORE_CASE), "").trim()
+                    }
+                    if (cleanTitle.isNotBlank()) {
+                        Text(
+                            text = cleanTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 24.sp
+                        )
+                    }
+                    if (!currentQuestion.imageUrl.isNullOrBlank()) {
+                        if (cleanTitle.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(currentQuestion.imageUrl)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = cleanTitle.ifBlank { "Question Image" },
+                            contentScale = ContentScale.FillWidth,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(0.8.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                                .testTag("question_image_${currentQuestion.id}")
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))

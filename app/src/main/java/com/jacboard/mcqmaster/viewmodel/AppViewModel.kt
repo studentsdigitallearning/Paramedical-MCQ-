@@ -65,25 +65,16 @@ class AppViewModel(
     val chaptersState: StateFlow<Map<String, List<com.jacboard.mcqmaster.model.Chapter>>> = repository.chaptersState
 
     fun refreshDataFromSupabase(onComplete: ((Boolean) -> Unit)? = null) {
-        if (!networkMonitor.isCurrentlyConnected()) {
-            onComplete?.invoke(false)
-            return
-        }
         repository.syncFromSupabase(onComplete)
     }
 
     fun retryConnection(onComplete: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
             _isCheckingConnection.value = true
-            val isConnected = networkMonitor.refreshStatus()
-            if (isConnected) {
-                repository.syncFromSupabase { success ->
-                    _isCheckingConnection.value = false
-                    onComplete?.invoke(success)
-                }
-            } else {
+            networkMonitor.refreshStatus()
+            repository.syncFromSupabase { success ->
                 _isCheckingConnection.value = false
-                onComplete?.invoke(false)
+                onComplete?.invoke(success)
             }
         }
     }

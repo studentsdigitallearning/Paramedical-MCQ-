@@ -58,14 +58,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.jacboard.mcqmaster.model.BannerActionType
 import com.jacboard.mcqmaster.model.CategoryType
 import com.jacboard.mcqmaster.model.ClassData
@@ -100,20 +103,17 @@ fun HomeScreen(
     onMenuClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val banners = promotionalBanners.ifEmpty { PromotionalBanner.defaultBanners }
+    val banners = promotionalBanners
     val pagerState = rememberPagerState(pageCount = { banners.size })
 
-    // Auto-sliding mechanism: automatically advances banner every 4.5 seconds if more than 1 banner exists
-    LaunchedEffect(pagerState.pageCount) {
-        if (pagerState.pageCount > 1) {
+    // Auto-sliding mechanism: automatically advances banner every 4.5 seconds when more than 1 banner exists
+    LaunchedEffect(banners.size) {
+        if (banners.size > 1) {
             while (true) {
                 delay(4500L)
-                if (!pagerState.isScrollInProgress) {
-                    val count = pagerState.pageCount
-                    if (count > 1) {
-                        val nextPage = (pagerState.currentPage + 1) % count
-                        pagerState.animateScrollToPage(nextPage, animationSpec = tween(600))
-                    }
+                if (!pagerState.isScrollInProgress && pagerState.pageCount > 1) {
+                    val nextPage = (pagerState.currentPage + 1) % pagerState.pageCount
+                    pagerState.animateScrollToPage(nextPage, animationSpec = tween(600))
                 }
             }
         }
@@ -205,7 +205,7 @@ fun HomeScreen(
                     }
                 }
 
-                // Right Side: Notification Bell + Hamburger Menu Symbol ("humble symbol")
+                // Right Side: Notification Bell + Hamburger Menu Symbol
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -262,192 +262,61 @@ fun HomeScreen(
             }
         }
 
-        // 2. Promotional Slider in Hero Section (Slide 1 is Today's MCQ Challenge matching Screenshot 5)
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp)
-            ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxWidth()
-                ) { page ->
-                    val banner = banners[page]
+        // 2. Dynamic Hero Promotional Section (Supports 1, 3, 4, or any number of slides + Image Banners)
+        if (banners.isNotEmpty()) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp)
+                ) {
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { page ->
+                        val banner = banners.getOrNull(page) ?: banners.first()
+                        val slideBrush = getBannerGradientBrush(page, isDarkTheme)
 
-                    if (banner.isDailyChallenge) {
-                        // The exact visual design of the Today's MCQ Challenge Hero Card
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .shadow(
-                                    elevation = 6.dp,
-                                    shape = RoundedCornerShape(24.dp),
-                                    spotColor = PrimaryPurple.copy(alpha = 0.35f)
-                                )
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(if (isDarkTheme) DailyChallengeDarkGradient else DailyChallengeGradient)
-                                .border(
-                                    1.dp,
-                                    Color.White.copy(alpha = if (isDarkTheme) 0.15f else 0.22f),
-                                    RoundedCornerShape(24.dp)
-                                )
-                                .clickable { onDailyChallengeStart() }
-                                .padding(20.dp)
-                                .testTag("hero_daily_challenge_card")
-                        ) {
-                            Column {
-                                // Top tag row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    // Left tag: TODAY'S CHALLENGE
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(Color.White.copy(alpha = 0.18f))
-                                            .border(0.8.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.EmojiEvents,
-                                            contentDescription = null,
-                                            tint = AccentGold,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = banner.badgeText,
-                                            color = AccentGold,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            letterSpacing = 0.5.sp
-                                        )
-                                    }
-
-                                    // Right tag: 20 Questions • 30 Minutes or Not Scheduled
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(Color.White.copy(alpha = 0.18f))
-                                            .border(0.8.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = if (isDailyTestAvailable) banner.metaText else "Not Scheduled",
-                                            color = Color.White,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                // Title
-                                Text(
-                                    text = if (isDailyTestAvailable) banner.title else "${currentClass?.name ?: "Course"} Daily Challenge",
-                                    color = Color.White,
-                                    fontSize = 21.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                Text(
-                                    text = if (isDailyTestAvailable) banner.description else "No daily test scheduled for ${currentClass?.name ?: "this course"} today.",
-                                    color = Color.White.copy(alpha = 0.90f),
-                                    fontSize = 13.sp
-                                )
-
-                                Spacer(modifier = Modifier.height(20.dp))
-
-                                // Bottom Row: Resets in + Start Test button
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(Color.White.copy(alpha = 0.18f))
-                                            .border(0.8.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
-                                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Schedule,
-                                            contentDescription = null,
-                                            tint = AccentGold,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Resets in $dailyCountdown",
-                                            color = AccentGold,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-
-                                    GoldGradientButton(
-                                        text = if (isDailyTestAvailable) (banner.buttonText ?: "Start Test") else "Check Status",
-                                        onClick = onDailyChallengeStart,
-                                        leadingIcon = if (isDailyTestAvailable) Icons.Default.PlayArrow else Icons.Default.Quiz,
-                                        testTag = "start_daily_test_button"
+                        if (banner.isImageOnly) {
+                            // Pure Full-Bleed Image Banner Card
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(196.dp)
+                                    .shadow(
+                                        elevation = 6.dp,
+                                        shape = RoundedCornerShape(24.dp),
+                                        spotColor = PrimaryPurple.copy(alpha = 0.35f)
                                     )
-                                }
-                            }
-                        }
-                    } else {
-                        // Matching Promotional Banners (Requirement 4)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .shadow(
-                                    elevation = 6.dp,
-                                    shape = RoundedCornerShape(24.dp),
-                                    spotColor = PrimaryPurple.copy(alpha = 0.35f)
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(slideBrush)
+                                    .border(
+                                        1.dp,
+                                        Color.White.copy(alpha = if (isDarkTheme) 0.15f else 0.22f),
+                                        RoundedCornerShape(24.dp)
+                                    )
+                                    .clickable {
+                                        handleBannerClick(context, banner, onDailyChallengeStart, onViewAllCategories, categories, onCategoryClick)
+                                    }
+                                    .testTag("promo_banner_${banner.id}")
+                            ) {
+                                AsyncImage(
+                                    model = banner.imageUrl,
+                                    contentDescription = banner.badgeText.ifBlank { "Promotional Banner" },
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
                                 )
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(if (isDarkTheme) DailyChallengeDarkGradient else DailyChallengeGradient)
-                                .border(
-                                    1.dp,
-                                    Color.White.copy(alpha = if (isDarkTheme) 0.15f else 0.22f),
-                                    RoundedCornerShape(24.dp)
-                                )
-                                .clickable {
-                                    handleBannerClick(context, banner, onDailyChallengeStart, onViewAllCategories, categories, onCategoryClick)
-                                }
-                                .padding(20.dp)
-                                .testTag("promo_banner_${banner.id}")
-                        ) {
-                            Column {
-                                // Top tag row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
+
+                                if (!banner.badgeText.isBlank()) {
+                                    Box(
                                         modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(14.dp)
                                             .clip(RoundedCornerShape(14.dp))
-                                            .background(Color.White.copy(alpha = 0.18f))
-                                            .border(0.8.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                                            .background(Color.Black.copy(alpha = 0.55f))
+                                            .border(0.8.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(14.dp))
                                             .padding(horizontal = 10.dp, vertical = 4.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = if (banner.actionType == BannerActionType.OPEN_VIDEO) Icons.Default.PlayCircle else Icons.Default.Star,
-                                            contentDescription = null,
-                                            tint = AccentGold,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = banner.badgeText,
                                             color = AccentGold,
@@ -456,48 +325,14 @@ fun HomeScreen(
                                             letterSpacing = 0.5.sp
                                         )
                                     }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(Color.White.copy(alpha = 0.18f))
-                                            .border(0.8.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = banner.metaText,
-                                            color = Color.White,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
                                 }
 
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                Text(
-                                    text = banner.title,
-                                    color = Color.White,
-                                    fontSize = 21.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                Text(
-                                    text = banner.description,
-                                    color = Color.White.copy(alpha = 0.90f),
-                                    fontSize = 13.sp
-                                )
-
-                                Spacer(modifier = Modifier.height(20.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    if (banner.buttonText != null) {
+                                if (!banner.buttonText.isNullOrBlank()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(14.dp)
+                                    ) {
                                         GoldGradientButton(
                                             text = banner.buttonText,
                                             onClick = {
@@ -509,140 +344,425 @@ fun HomeScreen(
                                     }
                                 }
                             }
+                        } else if (banner.isDailyChallenge) {
+                            // Daily MCQ Challenge Hero Slide (Supports optional custom background image)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .shadow(
+                                        elevation = 6.dp,
+                                        shape = RoundedCornerShape(24.dp),
+                                        spotColor = PrimaryPurple.copy(alpha = 0.35f)
+                                    )
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(if (isDarkTheme) DailyChallengeDarkGradient else DailyChallengeGradient)
+                                    .border(
+                                        1.dp,
+                                        Color.White.copy(alpha = if (isDarkTheme) 0.15f else 0.22f),
+                                        RoundedCornerShape(24.dp)
+                                    )
+                                    .clickable { onDailyChallengeStart() }
+                                    .testTag("hero_daily_challenge_card")
+                            ) {
+                                if (banner.hasImage) {
+                                    AsyncImage(
+                                        model = banner.imageUrl,
+                                        contentDescription = banner.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.matchParentSize()
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .matchParentSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    colors = listOf(
+                                                        Color.Black.copy(alpha = 0.45f),
+                                                        Color.Black.copy(alpha = 0.78f)
+                                                    )
+                                                )
+                                            )
+                                    )
+                                }
+
+                                Column(modifier = Modifier.padding(20.dp)) {
+                                    // Top tag row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(Color.White.copy(alpha = 0.18f))
+                                                .border(0.8.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.EmojiEvents,
+                                                contentDescription = null,
+                                                tint = AccentGold,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = banner.badgeText.ifBlank { "TODAY'S CHALLENGE" },
+                                                color = AccentGold,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                letterSpacing = 0.5.sp
+                                            )
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .background(Color.White.copy(alpha = 0.18f))
+                                                .border(0.8.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = if (isDailyTestAvailable) banner.metaText.ifBlank { "Live Today" } else "Not Scheduled",
+                                                color = Color.White,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    Text(
+                                        text = if (isDailyTestAvailable) banner.title else "${currentClass?.name ?: "Course"} Daily Challenge",
+                                        color = Color.White,
+                                        fontSize = 21.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    Text(
+                                        text = if (isDailyTestAvailable) banner.description else "No daily test scheduled for ${currentClass?.name ?: "this course"} today.",
+                                        color = Color.White.copy(alpha = 0.90f),
+                                        fontSize = 13.sp
+                                    )
+
+                                    Spacer(modifier = Modifier.height(20.dp))
+
+                                    // Bottom Row: Resets in + Start Test button
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(Color.White.copy(alpha = 0.18f))
+                                                .border(0.8.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
+                                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Schedule,
+                                                contentDescription = null,
+                                                tint = AccentGold,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Resets in $dailyCountdown",
+                                                color = AccentGold,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+
+                                        GoldGradientButton(
+                                            text = if (isDailyTestAvailable) (banner.buttonText ?: "Start Test") else "Check Status",
+                                            onClick = onDailyChallengeStart,
+                                            leadingIcon = if (isDailyTestAvailable) Icons.Default.PlayArrow else Icons.Default.Quiz,
+                                            testTag = "start_daily_test_button"
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // Dynamic Promotional Slide (Supports custom image background OR rich dynamic gradient)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .shadow(
+                                        elevation = 6.dp,
+                                        shape = RoundedCornerShape(24.dp),
+                                        spotColor = PrimaryPurple.copy(alpha = 0.35f)
+                                    )
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(slideBrush)
+                                    .border(
+                                        1.dp,
+                                        Color.White.copy(alpha = if (isDarkTheme) 0.15f else 0.22f),
+                                        RoundedCornerShape(24.dp)
+                                    )
+                                    .clickable {
+                                        handleBannerClick(context, banner, onDailyChallengeStart, onViewAllCategories, categories, onCategoryClick)
+                                    }
+                                    .testTag("promo_banner_${banner.id}")
+                            ) {
+                                if (banner.hasImage) {
+                                    AsyncImage(
+                                        model = banner.imageUrl,
+                                        contentDescription = banner.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.matchParentSize()
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .matchParentSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    colors = listOf(
+                                                        Color.Black.copy(alpha = 0.42f),
+                                                        Color.Black.copy(alpha = 0.78f)
+                                                    )
+                                                )
+                                            )
+                                    )
+                                }
+
+                                Column(modifier = Modifier.padding(20.dp)) {
+                                    // Top tag row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        if (banner.badgeText.isNotBlank()) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(14.dp))
+                                                    .background(Color.White.copy(alpha = 0.18f))
+                                                    .border(0.8.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (banner.actionType == BannerActionType.OPEN_VIDEO) Icons.Default.PlayCircle else Icons.Default.Star,
+                                                    contentDescription = null,
+                                                    tint = AccentGold,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = banner.badgeText,
+                                                    color = AccentGold,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    letterSpacing = 0.5.sp
+                                                )
+                                            }
+                                        } else {
+                                            Spacer(modifier = Modifier.width(1.dp))
+                                        }
+
+                                        if (banner.metaText.isNotBlank()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(14.dp))
+                                                    .background(Color.White.copy(alpha = 0.18f))
+                                                    .border(0.8.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = banner.metaText,
+                                                    color = Color.White,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    if (banner.title.isNotBlank()) {
+                                        Text(
+                                            text = banner.title,
+                                            color = Color.White,
+                                            fontSize = 21.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    if (banner.description.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = banner.description,
+                                            color = Color.White.copy(alpha = 0.90f),
+                                            fontSize = 13.sp
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(20.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.End
+                                    ) {
+                                        if (!banner.buttonText.isNullOrBlank()) {
+                                            GoldGradientButton(
+                                                text = banner.buttonText,
+                                                onClick = {
+                                                    handleBannerClick(context, banner, onDailyChallengeStart, onViewAllCategories, categories, onCategoryClick)
+                                                },
+                                                leadingIcon = if (banner.actionType == BannerActionType.OPEN_VIDEO) Icons.Default.PlayArrow else Icons.AutoMirrored.Filled.OpenInNew,
+                                                testTag = "promo_button_${banner.id}"
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Dynamic Pagination Dots (shown when more than 1 banner slide exists)
+                    if (banners.size > 1) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            repeat(banners.size) { index ->
+                                val isCurrent = pagerState.currentPage == index
+                                Box(
+                                    modifier = Modifier
+                                        .padding(horizontal = 3.dp)
+                                        .height(5.dp)
+                                        .width(if (isCurrent) 18.dp else 5.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(
+                                            if (isCurrent) PrimaryPurple else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                                        )
+                                )
+                            }
                         }
                     }
                 }
-
-                // Small Pagination Dots / Indicator (Requirement 4)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    repeat(banners.size) { index ->
-                        val isCurrent = pagerState.currentPage == index
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 3.dp)
-                                .height(5.dp)
-                                .width(if (isCurrent) 18.dp else 5.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(
-                                    if (isCurrent) PrimaryPurple else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-                                )
-                        )
-                    }
-                }
             }
         }
 
-        // 3. Explore Tests Section (matching Screenshot 5 with Custom Tests replaced by Daily Test)
-        item {
-            Column(modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Explore Tests",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
+        // 3. Dynamic Explore Tests Section (100% driven by categories from Supabase)
+        if (categories.isNotEmpty()) {
+            item {
+                Column(modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) {
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clickable { onViewAllCategories() }
-                            .testTag("view_all_categories")
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "View All",
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = "Explore Tests",
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = PrimaryPurple
+                            color = MaterialTheme.colorScheme.onBackground
                         )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = null,
-                            tint = PrimaryPurple,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clickable { onViewAllCategories() }
+                                .testTag("view_all_categories")
+                        ) {
+                            Text(
+                                text = "View All",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryPurple
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = PrimaryPurple,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                val catSubject = categories.firstOrNull { it.type == CategoryType.SUBJECT || it.id == "cat_subject" }
-                    ?: TestCategory("cat_subject", "Subject Wise", CategoryType.SUBJECT, "subject", "Explore chapter-wise tests", 0)
-                val catMock = categories.firstOrNull { it.type == CategoryType.MOCK || it.id == "cat_mock" }
-                    ?: TestCategory("cat_mock", "Mock Tests", CategoryType.MOCK, "mock", "Timed full syllabus simulation", 0)
-                val catPrevious = categories.firstOrNull { it.type == CategoryType.PREVIOUS || it.id == "cat_previous" }
-                    ?: TestCategory("cat_previous", "Previous Tests", CategoryType.PREVIOUS, "previous", "Past board question papers", 0)
-                val catDaily = categories.firstOrNull { it.type == CategoryType.DAILY || it.id == "cat_daily" }
-                    ?: TestCategory("cat_daily", "Daily Test", CategoryType.DAILY, "daily", "Today's daily challenge test", 0)
-
-                // Row 1: Subject Wise & Mock Tests
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    ExploreCategoryCard(
-                        title = "Subject Wise",
-                        subtitle = "Chapter-wise tests",
-                        icon = Icons.AutoMirrored.Filled.MenuBook,
-                        iconBgLight = Color(0xFFEEEAFE),
-                        iconTint = PrimaryPurple,
-                        isDarkTheme = isDarkTheme,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onCategoryClick(catSubject) }
-                    )
-
-                    ExploreCategoryCard(
-                        title = "Mock Tests",
-                        subtitle = "Full syllabus",
-                        icon = Icons.Default.Timer,
-                        iconBgLight = Color(0xFFEBF3FF),
-                        iconTint = Color(0xFF2563EB),
-                        isDarkTheme = isDarkTheme,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onCategoryClick(catMock) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Row 2: Previous Tests & Daily Test
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    ExploreCategoryCard(
-                        title = "Previous Tests",
-                        subtitle = "Past board papers",
-                        icon = Icons.Default.HistoryEdu,
-                        iconBgLight = Color(0xFFFFF0E5),
-                        iconTint = Color(0xFFF97316),
-                        isDarkTheme = isDarkTheme,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onCategoryClick(catPrevious) }
-                    )
-
-                    ExploreCategoryCard(
-                        title = "Daily Test",
-                        subtitle = "Today's challenge",
-                        icon = Icons.Default.EmojiEvents,
-                        iconBgLight = Color(0xFFF5EEFF),
-                        iconTint = Color(0xFF8B5CF6),
-                        isDarkTheme = isDarkTheme,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onCategoryClick(catDaily) }
-                    )
+                    val orderedCategories = rememberCategoriesOrder(categories)
+                    val rows = orderedCategories.chunked(2)
+                    rows.forEachIndexed { rowIdx, rowItems ->
+                        if (rowIdx > 0) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            rowItems.forEach { cat ->
+                                val (icon, bgLight, tint) = getCategoryVisualStyle(cat)
+                                ExploreCategoryCard(
+                                    title = cat.name,
+                                    subtitle = cat.subtitle,
+                                    icon = icon,
+                                    iconBgLight = bgLight,
+                                    iconTint = tint,
+                                    isDarkTheme = isDarkTheme,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { onCategoryClick(cat) }
+                                )
+                            }
+                            if (rowItems.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+private fun rememberCategoriesOrder(categories: List<TestCategory>): List<TestCategory> {
+    val priorityOrder = mapOf(
+        CategoryType.SUBJECT to 1,
+        CategoryType.MOCK to 2,
+        CategoryType.PREVIOUS to 3,
+        CategoryType.DAILY to 4
+    )
+    return categories.sortedBy { priorityOrder[it.type] ?: 5 }
+}
+
+private fun getCategoryVisualStyle(cat: TestCategory): Triple<ImageVector, Color, Color> {
+    return when (cat.type) {
+        CategoryType.SUBJECT -> Triple(Icons.AutoMirrored.Filled.MenuBook, Color(0xFFEEEAFE), PrimaryPurple)
+        CategoryType.MOCK -> Triple(Icons.Default.Timer, Color(0xFFEBF3FF), Color(0xFF2563EB))
+        CategoryType.PREVIOUS -> Triple(Icons.Default.HistoryEdu, Color(0xFFFFF0E5), Color(0xFFF97316))
+        CategoryType.DAILY -> Triple(Icons.Default.EmojiEvents, Color(0xFFF5EEFF), Color(0xFF8B5CF6))
+        else -> Triple(Icons.Default.Quiz, Color(0xFFE0F2FE), Color(0xFF0284C7))
+    }
+}
+
+private fun getBannerGradientBrush(pageIndex: Int, isDarkTheme: Boolean): Brush {
+    return when (pageIndex % 4) {
+        0 -> if (isDarkTheme) DailyChallengeDarkGradient else DailyChallengeGradient
+        1 -> Brush.linearGradient(
+            colors = if (isDarkTheme) listOf(Color(0xFF1E3A8A), Color(0xFF3730A3))
+            else listOf(Color(0xFF2563EB), Color(0xFF4F46E5))
+        )
+        2 -> Brush.linearGradient(
+            colors = if (isDarkTheme) listOf(Color(0xFF065F46), Color(0xFF0F766E))
+            else listOf(Color(0xFF059669), Color(0xFF0D9488))
+        )
+        else -> Brush.linearGradient(
+            colors = if (isDarkTheme) listOf(Color(0xFF9A3412), Color(0xFFBE123C))
+            else listOf(Color(0xFFEA580C), Color(0xFFE11D48))
+        )
     }
 }
 
@@ -657,9 +777,9 @@ private fun handleBannerClick(
     when (banner.actionType) {
         BannerActionType.OPEN_DAILY_TEST -> onDailyChallengeStart()
         BannerActionType.OPEN_INTERNAL_PAGE, BannerActionType.INTERNAL_ROUTE -> {
-            when (banner.targetId) {
-                "categories" -> onViewAllCategories()
-                "mock_tests", "mock" -> {
+            when (banner.targetId?.lowercase()) {
+                "categories", "all" -> onViewAllCategories()
+                "mock_tests", "mock", "cat_mock" -> {
                     val mockCat = categories.firstOrNull { it.type == CategoryType.MOCK || it.id == "cat_mock" }
                     if (mockCat != null && onCategoryClick != null) {
                         onCategoryClick(mockCat)
@@ -667,10 +787,18 @@ private fun handleBannerClick(
                         onViewAllCategories()
                     }
                 }
-                "subject_wise", "subjects", "subject" -> {
+                "subject_wise", "subjects", "subject", "cat_subject" -> {
                     val subCat = categories.firstOrNull { it.type == CategoryType.SUBJECT || it.id == "cat_subject" }
                     if (subCat != null && onCategoryClick != null) {
                         onCategoryClick(subCat)
+                    } else {
+                        onViewAllCategories()
+                    }
+                }
+                "previous_tests", "previous", "pyq", "cat_previous" -> {
+                    val prevCat = categories.firstOrNull { it.type == CategoryType.PREVIOUS || it.id == "cat_previous" }
+                    if (prevCat != null && onCategoryClick != null) {
+                        onCategoryClick(prevCat)
                     } else {
                         onViewAllCategories()
                     }
@@ -679,7 +807,8 @@ private fun handleBannerClick(
             }
         }
         BannerActionType.OPEN_WEBSITE, BannerActionType.OPEN_VIDEO, BannerActionType.EXTERNAL_URL -> {
-            val url = banner.url
+            val url = (banner.url ?: banner.targetId)?.trim()
+                ?.takeIf { it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true) }
             if (!url.isNullOrBlank()) {
                 try {
                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
@@ -687,17 +816,28 @@ private fun handleBannerClick(
                 } catch (_: Exception) {}
             }
         }
-        BannerActionType.NONE, BannerActionType.OPEN_TEST -> {
-            val url = banner.url
-            if (!url.isNullOrBlank()) {
+        BannerActionType.IMAGE_BANNER, BannerActionType.NONE, BannerActionType.OPEN_TEST -> {
+            val clickUrl = (banner.url?.takeIf { it != banner.imageUrl } ?: banner.targetId)?.trim()
+                ?.takeIf { it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true) }
+            if (!clickUrl.isNullOrBlank()) {
                 try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(clickUrl))
                     context.startActivity(intent)
                 } catch (_: Exception) {}
-            } else if (banner.targetId == "daily_test") {
-                onDailyChallengeStart()
             } else {
-                onViewAllCategories()
+                when (banner.targetId?.lowercase()) {
+                    "daily_test", "daily" -> onDailyChallengeStart()
+                    "mock_tests", "mock", "cat_mock" -> {
+                        val mockCat = categories.firstOrNull { it.type == CategoryType.MOCK || it.id == "cat_mock" }
+                        if (mockCat != null && onCategoryClick != null) onCategoryClick(mockCat) else onViewAllCategories()
+                    }
+                    "subject_wise", "subjects", "subject", "cat_subject" -> {
+                        val subCat = categories.firstOrNull { it.type == CategoryType.SUBJECT || it.id == "cat_subject" }
+                        if (subCat != null && onCategoryClick != null) onCategoryClick(subCat) else onViewAllCategories()
+                    }
+                    "categories" -> onViewAllCategories()
+                    else -> if (banner.actionType != BannerActionType.IMAGE_BANNER) onViewAllCategories()
+                }
             }
         }
     }

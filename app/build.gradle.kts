@@ -20,14 +20,6 @@ android {
     versionCode = 1
     versionName = "1.0"
 
-    val envSupabaseUrl = System.getenv("SUPABASE_URL")
-      ?: "https://zjortvgjiuimqvgxmpbn.supabase.co"
-    val envSupabaseAnonKey = System.getenv("SUPABASE_ANON_KEY")
-      ?: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpqb3J0dmdqaXVpbXF2Z3htcGJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzNjY1MjQsImV4cCI6MjEwNjk0MjUyNH0.igAaxxH9fblPPmzyM044UgEiopMXStEjmgt1SQ_rLbg"
-
-    buildConfigField("String", "SUPABASE_URL", "\"$envSupabaseUrl\"")
-    buildConfigField("String", "SUPABASE_ANON_KEY", "\"$envSupabaseAnonKey\"")
-
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     multiDexEnabled = true
     multiDexKeepProguard = file("main-dex-rules.pro")
@@ -140,7 +132,7 @@ dependencies {
   // implementation(libs.androidx.navigation.compose)
   // implementation(libs.androidx.room.ktx)
   // implementation(libs.androidx.room.runtime)
-  // implementation(libs.coil.compose)
+  implementation(libs.coil.compose)
   // implementation(libs.converter.moshi)
   // implementation(libs.firebase.ai)
   // Uncomment to use Firestore:

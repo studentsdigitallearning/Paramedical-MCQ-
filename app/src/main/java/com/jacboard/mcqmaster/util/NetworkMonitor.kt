@@ -74,21 +74,14 @@ class NetworkMonitor private constructor(private val context: Context) {
      * Checks if device is currently connected to an active network with internet capability.
      */
     fun isCurrentlyConnected(): Boolean {
-        val cm = connectivityManager ?: return false
+        val cm = connectivityManager ?: return true
         return try {
             val activeNetwork = cm.activeNetwork ?: return false
             val capabilities = cm.getNetworkCapabilities(activeNetwork) ?: return false
-
-            val hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            val hasValidTransport = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
-                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
-
-            hasInternet && hasValidTransport
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
         } catch (e: Exception) {
             Log.e("NetworkMonitor", "Error checking connection: ${e.message}")
-            false
+            true
         }
     }
 

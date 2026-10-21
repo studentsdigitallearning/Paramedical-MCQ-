@@ -63,6 +63,12 @@ fun ChooseCourseScreen(
     onCourseSelected: (courseName: String, classId: String, className: String) -> Unit,
     onBackClick: (() -> Unit)? = null
 ) {
+    androidx.compose.runtime.LaunchedEffect(availableClasses.isEmpty()) {
+        if (availableClasses.isEmpty() && !isSyncing) {
+            onRetryClick?.invoke()
+        }
+    }
+
     val itemsList = availableClasses.map { cls ->
         val iconKey = when {
             cls.id.contains("dmlt") -> "science"

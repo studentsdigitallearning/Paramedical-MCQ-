@@ -13,11 +13,11 @@ object AppConfig {
     const val EDUCATIONAL_PURPOSE = "Comprehensive MCQ practice, mock tests, and daily challenges for CBSE & State Board students of Class 8 to 12."
     const val APP_DESCRIPTION = "JAC MCQ Master is an intuitive learning platform designed to help school students master multiple-choice questions across Mathematics, Science, Social Studies, English, and Hindi. With detailed analytics, streak rewards, and daily challenges, students achieve academic excellence through regular practice."
 
-    // Configured URLs dynamically
+    // Configured URLs dynamically from Supabase app_config
     var privacyPolicyUrl: String? = null
     var termsConditionsUrl: String? = null
     var storeUrl: String? = null // Opens Google Play Store dynamically via package name if null
-    var supportEmail: String = "support@jharplus.com"
+    var supportEmail: String = ""
     var websiteUrl: String = ""
     var telegramUrl: String = ""
     var whatsappUrl: String = ""

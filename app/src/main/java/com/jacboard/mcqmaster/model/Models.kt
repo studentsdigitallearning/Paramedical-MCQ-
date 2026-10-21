@@ -158,6 +158,7 @@ data class Question(
     val textHindi: String? = null,
     val optionsHindi: List<String>? = null,
     val explanationHindi: String? = null,
+    val imageUrl: String? = null,
     val optionIds: List<String> = listOf("opt_a", "opt_b", "opt_c", "opt_d")
 ) {
     fun hasHindi(): Boolean {
@@ -248,8 +249,8 @@ data class TestResult(
     val accuracyPercent: Int,
     val rollNo: String? = null,
     val submissionId: Long? = null,
-    val strongestChapter: String = "Real Numbers",
-    val weakestChapter: String = "Triangles"
+    val strongestChapter: String = "",
+    val weakestChapter: String = ""
 )
 
 data class LeaderboardEntry(
