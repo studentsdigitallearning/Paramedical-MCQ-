@@ -17,8 +17,8 @@ android {
     applicationId = "com.jacboard.mcqmaster"
     minSdk = 23
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 2
+    versionName = "1.1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     multiDexEnabled = true
@@ -35,13 +35,13 @@ android {
         }
       }
 
-      val storeFilePath = System.getenv("KEYSTORE_PATH")
+      val rawPath = System.getenv("KEYSTORE_PATH")
         ?: keystoreProps.getProperty("storeFile")
-        ?: "${rootDir}/jac-mcq-master-release.jks"
+        ?: "jac-mcq-master-release.jks"
 
       val storePass = System.getenv("STORE_PASSWORD")
         ?: keystoreProps.getProperty("storePassword")
-        ?: "Ravi@2005puja"
+        ?: "Ravi@2005Rapuja"
 
       val aliasName = System.getenv("KEY_ALIAS")
         ?: keystoreProps.getProperty("keyAlias")
@@ -49,9 +49,9 @@ android {
 
       val keyPass = System.getenv("KEY_PASSWORD")
         ?: keystoreProps.getProperty("keyPassword")
-        ?: "Ravi@2005puja"
+        ?: "Ravi@2005Rapuja"
 
-      val kFile = file(storeFilePath)
+      val kFile = if (File(rawPath).isAbsolute) File(rawPath) else rootProject.file(rawPath)
       if (kFile.exists() && !storePass.isNullOrBlank() && !keyPass.isNullOrBlank()) {
         storeFile = kFile
         storePassword = storePass
@@ -90,10 +90,26 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions {
+    unitTests {
+      isIncludeAndroidResources = true
+      isReturnDefaultValues = true
+    }
+  }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true
+  }
+}
+
+// Bridge environment secrets into gitignored .env if not already materialized on disk
+// so Secrets Gradle Plugin injects real BuildConfig values into physical device APK/AAB builds.
+val dotEnvFile = rootProject.file(".env")
+if (!dotEnvFile.exists()) {
+  val envSupabaseUrl = System.getenv("SUPABASE_URL")?.trim().orEmpty()
+  val envSupabaseKey = System.getenv("SUPABASE_ANON_KEY")?.trim().orEmpty()
+  if (envSupabaseUrl.isNotBlank() && envSupabaseKey.isNotBlank()) {
+    dotEnvFile.writeText("SUPABASE_URL=$envSupabaseUrl\nSUPABASE_ANON_KEY=$envSupabaseKey\n")
   }
 }
 

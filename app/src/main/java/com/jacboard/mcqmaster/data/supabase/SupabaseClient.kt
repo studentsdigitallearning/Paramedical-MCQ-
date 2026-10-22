@@ -174,6 +174,45 @@ class SupabaseClient private constructor() {
         }
     }
 
+    /**
+     * Executes a POST request against a Supabase Edge Function (/functions/v1/<functionName>).
+     */
+    suspend fun invokeEdgeFunction(
+        functionName: String,
+        jsonPayload: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        if (!SupabaseConfig.isConfigured) {
+            return@withContext Result.failure(IllegalStateException("Supabase is not configured."))
+        }
+        try {
+            val base = SupabaseConfig.projectUrl.trimEnd('/')
+            val cleanFn = functionName.trimStart('/')
+            val url = "$base/functions/v1/$cleanFn"
+            val requestBody = jsonPayload.toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url(url)
+                .header("apikey", SupabaseConfig.anonKey)
+                .header("Authorization", "Bearer ${SupabaseConfig.anonKey}")
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .post(requestBody)
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful) {
+                    Result.success(body)
+                } else {
+                    Log.w(TAG, "Edge Function $cleanFn failed with HTTP ${response.code}: $body")
+                    Result.failure(IOException("Supabase Function HTTP ${response.code}: $body"))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Edge Function $functionName exception: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
     private fun buildUrl(tableOrEndpoint: String, queryParams: String): String {
         val base = SupabaseConfig.restBaseUrl
         val cleanEndpoint = tableOrEndpoint.trimStart('/')

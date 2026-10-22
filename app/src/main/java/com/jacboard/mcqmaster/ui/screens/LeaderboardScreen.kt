@@ -84,11 +84,10 @@ fun LeaderboardScreen(
     val bestResult = dailyState.currentUserBest
     val userRank = dailyState.currentUserRank
     val hasAttempted = bestResult != null && userRank != null
-    val isUserOutsideTop9 = hasAttempted && userRank > 9
-    val isUserOutsideTop100 = isUserOutsideTop9
+    val isUserOutsideTop100 = hasAttempted && userRank > 100
 
     val displayRankers: List<DailyLeaderboardEntry> = remember(dailyState.top100) {
-        dailyState.top100.take(9)
+        dailyState.top10
     }
 
     Box(
@@ -170,8 +169,47 @@ fun LeaderboardScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
+                // Explicit Database/Network Error Banner (Requirement 9: Never hide database errors as empty state)
+                if (dailyState.errorType != com.jacboard.mcqmaster.model.LeaderboardErrorType.NONE &&
+                    !dailyState.errorMessage.isNullOrBlank()
+                ) {
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, AccentOrange.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                .testTag("leaderboard_error_banner"),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = AccentOrange.copy(alpha = 0.12f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.WarningAmber,
+                                    contentDescription = "Leaderboard status warning",
+                                    tint = AccentOrange,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = dailyState.errorMessage,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // USER STATUS CARD (Rule 6: If unattempted, show "Take today's Daily Test to get your rank.")
-                if (isDailyTestAvailable && hasAttempted) {
+                if (hasAttempted) {
                     // Performance Overview Summary Card
                     item {
                         Card(
@@ -231,7 +269,7 @@ fun LeaderboardScreen(
                                             .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
                                         Text(
-                                            text = if (isUserOutsideTop9) "Rank #$userRank (Outside Top 9)" else "🎉 Rank #$userRank (In Top 9)",
+                                            text = if (isUserOutsideTop100) "Outside Top 100" else "🎉 Rank #$userRank (Top 100)",
                                             color = if (isUserOutsideTop100) AccentOrange else SuccessGreen,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 11.5.sp
@@ -248,7 +286,7 @@ fun LeaderboardScreen(
                                 ) {
                                     PerformanceMetricItem(
                                         label = "Your Rank",
-                                        value = "#$userRank",
+                                        value = if (isUserOutsideTop100) ">100" else "#$userRank",
                                         color = if (isUserOutsideTop100) AccentOrange else PrimaryPurple,
                                         modifier = Modifier.weight(1f)
                                     )
@@ -265,7 +303,7 @@ fun LeaderboardScreen(
                                         modifier = Modifier.weight(1f)
                                     )
                                     PerformanceMetricItem(
-                                        label = "Participants",
+                                        label = "Top 100 List",
                                         value = "%,d".format(dailyState.totalParticipants),
                                         color = AccentGold,
                                         modifier = Modifier.weight(1f)
@@ -284,7 +322,7 @@ fun LeaderboardScreen(
                                     horizontalArrangement = Arrangement.SpaceAround
                                 ) {
                                     Text(
-                                        text = "Total Today: %,d".format(dailyState.totalParticipants),
+                                        text = "Top List: %,d".format(dailyState.totalParticipants),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = PrimaryPurple
@@ -400,7 +438,7 @@ fun LeaderboardScreen(
                             }
                         }
                     }
-                } else if (!isDailyTestAvailable) {
+                } else if (!isDailyTestAvailable && displayRankers.isEmpty()) {
                     // No daily test scheduled for this class today
                     item {
                         Card(
@@ -504,8 +542,8 @@ fun LeaderboardScreen(
                     }
                 }
 
-                // MAIN LEADERBOARD = TOP 100 ONLY (Rule 2, 3, 7)
-                if (isDailyTestAvailable && displayRankers.isNotEmpty()) {
+                // MAIN LEADERBOARD = TOP 100 BEST TOPPERS ONLY (No entries below 100 kept anywhere)
+                if (displayRankers.isNotEmpty()) {
                     // Top 3 Podium (ranks 1 to 3)
                     item {
                         Spacer(modifier = Modifier.height(4.dp))
@@ -577,13 +615,13 @@ fun LeaderboardScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "DAILY LEADERBOARD",
+                                    text = "TOP 10 LEADERBOARD",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = MaterialTheme.colorScheme.onBackground
                                 )
                                 Text(
-                                    text = "${displayRankers.size} participants",
+                                    text = "Top ${displayRankers.size} Shown • ${dailyState.top100.size}/100 Retained",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
@@ -622,118 +660,13 @@ fun LeaderboardScreen(
                         }
                     }
 
-                    // Main Leaderboard Items (Ranked students)
+                    // Main Leaderboard Items (Top 100 Best Ranked students only)
                     items(
                         items = displayRankers,
                         key = { it.rollNo?.takeIf { r -> r.isNotBlank() } ?: "${it.studentId}_${it.rank}" },
                         contentType = { "leaderboard_row" }
                     ) { entry ->
                         DailyLeaderboardRowItem(entry = entry)
-                    }
-
-                    // SEPARATE "YOUR RANK / MY POSITION" SECTION (Rule 4, 5, 12)
-                    // Rendered ONLY when current user is outside Top 100 (rank > 100).
-                    // If user rank <= 100, this separate section is NOT displayed (Rule 5: No duplicate).
-                    if (isUserOutsideTop9) {
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "YOUR RANK",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = AccentOrange
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            GlassCard(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .border(1.5.dp, AccentOrange, RoundedCornerShape(18.dp))
-                                    .testTag("user_outside_top100_separate_row"),
-                                shape = RoundedCornerShape(18.dp),
-                                backgroundColor = AccentOrange.copy(alpha = 0.12f),
-                                borderColor = AccentOrange
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 12.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.weight(1f),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "#$userRank",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = AccentOrange,
-                                                modifier = Modifier.width(44.dp)
-                                            )
-
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(38.dp)
-                                                    .clip(CircleShape)
-                                                    .background(AccentOrange),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = bestResult.studentName.take(2).uppercase(),
-                                                    color = Color.White,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 13.sp
-                                                )
-                                            }
-
-                                            Spacer(modifier = Modifier.width(10.dp))
-
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = formatStudentDisplayName(bestResult.studentName, true),
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                val rollText = if (!bestResult.rollNo.isNullOrBlank()) " • Roll: ${bestResult.rollNo}" else ""
-                                                Text(
-                                                    text = "${bestResult.studentClass}$rollText • Rank #$userRank of %,d".format(dailyState.totalParticipants),
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    fontSize = 11.sp,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.width(8.dp))
-
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text(
-                                                text = "${bestResult.bestScore.toInt()}/${bestResult.totalMarks.toInt()}",
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = AccentOrange
-                                            )
-                                            Text(
-                                                text = DailyTestTimeUtils.formatTimeTaken(bestResult.bestCompletionTimeSeconds),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                fontSize = 11.sp
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 } else {
                     // Empty Leaderboard State (Rule 7)

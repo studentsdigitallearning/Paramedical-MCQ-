@@ -342,12 +342,7 @@ fun AppNavigation(
                                     val attemptDetails = viewModel.getDailyAttemptDetails()
                                     val userPrefs = com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()
                                     val currentRoll = student.currentDailyRollNo ?: userPrefs?.getTodayRollNo(dailyState.dateKey)
-
-                                    androidx.compose.runtime.LaunchedEffect(student.id, dailyState.dateKey) {
-                                        if (currentRoll.isNullOrBlank() && !hasAttemptedDaily) {
-                                            viewModel.getOrGenerateDailyRollNo()
-                                        }
-                                    }
+                                    val captchaState by viewModel.captchaState.collectAsState()
 
                                     DailyTestScreen(
                                         dailyTest = dailyTest,
@@ -362,6 +357,18 @@ fun AppNavigation(
                                         currentRollNo = currentRoll,
                                         isDarkTheme = isDarkTheme,
                                         isLoading = isSyncing && tests.isEmpty(),
+                                        captchaState = captchaState,
+                                        onRefreshCaptcha = {
+                                            coroutineScope.launch {
+                                                viewModel.refreshCaptchaChallenge()
+                                            }
+                                        },
+                                        onVerifyCaptchaAndStartTest = { captchaAnswer, studentNameInput ->
+                                            viewModel.verifyCaptchaAndGenerateRollNo(
+                                                userAnswer = captchaAnswer,
+                                                customStudentName = studentNameInput
+                                            )
+                                        },
                                         onRequestRollNumber = {
                                             viewModel.getOrGenerateDailyRollNo()
                                         },
@@ -378,10 +385,7 @@ fun AppNavigation(
                                                     selectedBottomTab = 2
                                                 }
                                             } else {
-                                                coroutineScope.launch {
-                                                    viewModel.getOrGenerateDailyRollNo()
-                                                    navigateTo(Screen.TestInstructions(test))
-                                                }
+                                                navigateTo(Screen.TestInstructions(test))
                                             }
                                         },
                                         onViewResultClick = {

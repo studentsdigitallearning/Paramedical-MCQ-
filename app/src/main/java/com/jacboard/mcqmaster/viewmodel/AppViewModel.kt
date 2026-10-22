@@ -105,6 +105,7 @@ class AppViewModel(
     val dailyBestResult: StateFlow<DailyBestResult?> = repository.dailyBestResult
     val dailyAttempts: StateFlow<List<DailyTestAttempt>> = repository.dailyAttempts
     val dailyEligibility: StateFlow<com.jacboard.mcqmaster.model.DailyEligibilityResult> = repository.dailyEligibility
+    val captchaState: StateFlow<com.jacboard.mcqmaster.model.CaptchaChallengeUiState> = repository.captchaState
 
     // Monthly Streak and Rewards state flow
     val monthlyStreakState: StateFlow<com.jacboard.mcqmaster.model.MonthlyStreakState> = repository.monthlyStreakState
@@ -135,6 +136,7 @@ class AppViewModel(
             while (true) {
                 val millis = DailyTestTimeUtils.getMillisUntilMidnightIST()
                 _dailyCountdown.value = DailyTestTimeUtils.formatCountdown(millis)
+                repository.tickCaptchaTimer()
                 val currentDateKey = DailyTestTimeUtils.getCurrentDateKey()
                 val isMidnightCrossed = currentDateKey != repository.dailyDateKey.value ||
                     currentDateKey != lastDateKey ||
@@ -223,6 +225,17 @@ class AppViewModel(
 
     fun deleteProfile() {
         repository.deleteProfile()
+    }
+
+    suspend fun refreshCaptchaChallenge(): com.jacboard.mcqmaster.model.CaptchaChallengeUiState {
+        return repository.refreshCaptchaChallenge()
+    }
+
+    suspend fun verifyCaptchaAndGenerateRollNo(
+        userAnswer: String,
+        customStudentName: String? = null
+    ): com.jacboard.mcqmaster.model.CaptchaVerificationResult {
+        return repository.verifyCaptchaAndGenerateRollNo(userAnswer, customStudentName)
     }
 
     suspend fun getOrGenerateDailyRollNo(customStudentName: String? = null): String {

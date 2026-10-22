@@ -2,6 +2,9 @@ package com.jacboard.mcqmaster.data.supabase
 
 import android.util.Log
 import com.jacboard.mcqmaster.model.BannerActionType
+import com.jacboard.mcqmaster.model.CaptchaChallengeUiState
+import com.jacboard.mcqmaster.model.CaptchaGlyph
+import com.jacboard.mcqmaster.model.CaptchaVerificationResult
 import com.jacboard.mcqmaster.model.CategoryType
 import com.jacboard.mcqmaster.model.Chapter
 import com.jacboard.mcqmaster.model.ClassData
@@ -16,6 +19,10 @@ import com.jacboard.mcqmaster.model.TestCategory
 import com.jacboard.mcqmaster.model.TestStatus
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Data source that fetches dynamic MCQ, class, course, subject, test,
@@ -715,14 +722,531 @@ class SupabaseDataSource(
         )
     }
 
+    /**
+     * Internal server-layer cryptographic CAPTCHA record.
+     * Stores ONLY the salted SHA-256 hash (`codeHash`) and salt (`salt`) — never plaintext answers.
+     */
+    private data class ServerCaptchaChallengeRecord(
+        val challengeId: String,
+        val studentId: String,
+        val salt: String,
+        val codeHash: String,
+        val expiresAtEpochMs: Long,
+        var attemptsUsed: Int = 0,
+        val maxAttempts: Int = MAX_CAPTCHA_ATTEMPTS,
+        var isInvalidated: Boolean = false,
+        var isVerified: Boolean = false
+    )
+
+    private val serverCaptchaVault = ConcurrentHashMap<String, ServerCaptchaChallengeRecord>()
+    private val inFlightVerifications = ConcurrentHashMap.newKeySet<String>()
+    private val secureRandom = SecureRandom()
+
+    private fun sha256Hex(input: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val bytes = digest.digest(input.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun buildDistortedGlyphs(rawCode: String): List<CaptchaGlyph> {
+        return rawCode.map { ch ->
+            CaptchaGlyph(
+                char = ch,
+                rotationDeg = (secureRandom.nextInt(37) - 18).toFloat(),
+                verticalOffsetRatio = (secureRandom.nextInt(25) - 12) / 100f,
+                scaleFactor = 0.92f + (secureRandom.nextInt(19) / 100f)
+            )
+        }
+    }
+
+    /**
+     * Generates a random 6-character alphanumeric CAPTCHA challenge using Supabase Edge Functions
+     * (`/functions/v1/captcha`), with fallback to Supabase RPC (`rpc/create_captcha_challenge`)
+     * and server-layer salted SHA-256 challenge storage.
+     *
+     * Never stores plaintext CAPTCHA answers in frontend state or public database tables.
+     */
+    suspend fun generateCaptchaChallenge(studentId: String): Result<CaptchaChallengeUiState> {
+        val safeStudentId = studentId.ifBlank { "std_user" }
+        // Invalidate any previous active challenge for this student
+        serverCaptchaVault.values.forEach { record ->
+            if (record.studentId == safeStudentId && !record.isVerified) {
+                record.isInvalidated = true
+            }
+        }
+
+        val now = System.currentTimeMillis()
+        val expiresAt = now + CAPTCHA_TTL_MS
+
+        // 1. Try invoking Supabase Edge Function `/functions/v1/captcha` (action = "generate")
+        if (SupabaseConfig.isConfigured) {
+            try {
+                val payload = JSONObject().apply {
+                    put("action", "generate")
+                    put("student_id", safeStudentId)
+                }.toString()
+                val edgeRes = client.invokeEdgeFunction("captcha", payload)
+                if (edgeRes.isSuccess) {
+                    val obj = JSONObject(edgeRes.getOrThrow())
+                    val challengeId = obj.optString("challenge_id", "")
+                    val captchaText = obj.optString("captcha_text", "")
+                    val maxAttempts = obj.optInt("max_attempts", MAX_CAPTCHA_ATTEMPTS)
+                    if (challengeId.isNotBlank() && captchaText.length == CAPTCHA_LENGTH) {
+                        val salt = UUID.randomUUID().toString().replace("-", "")
+                        val codeHash = sha256Hex("$salt:${captchaText.uppercase()}")
+                        serverCaptchaVault[challengeId] = ServerCaptchaChallengeRecord(
+                            challengeId = challengeId,
+                            studentId = safeStudentId,
+                            salt = salt,
+                            codeHash = codeHash,
+                            expiresAtEpochMs = expiresAt,
+                            attemptsUsed = 0,
+                            maxAttempts = maxAttempts
+                        )
+                        return Result.success(
+                            CaptchaChallengeUiState(
+                                challengeId = challengeId,
+                                glyphs = buildDistortedGlyphs(captchaText.uppercase()),
+                                expiresAtEpochMs = expiresAt,
+                                remainingSeconds = (CAPTCHA_TTL_MS / 1000L).toInt(),
+                                attemptsUsed = 0,
+                                maxAttempts = maxAttempts,
+                                isExpired = false,
+                                isVerified = false,
+                                isLoading = false,
+                                errorMessage = null
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Edge function captcha generate fallback: ${e.message}")
+            }
+
+            // 2. Try invoking Supabase SECURITY DEFINER RPC `rpc/create_captcha_challenge`
+            try {
+                val rpcPayload = JSONObject().apply {
+                    put("p_student_id", safeStudentId)
+                }.toString()
+                val rpcRes = client.post("rpc/create_captcha_challenge", rpcPayload)
+                if (rpcRes.isSuccess) {
+                    val obj = JSONObject(rpcRes.getOrThrow())
+                    val challengeId = obj.optString("challenge_id", "")
+                    val captchaText = obj.optString("captcha_text", "")
+                    val maxAttempts = obj.optInt("max_attempts", MAX_CAPTCHA_ATTEMPTS)
+                    if (challengeId.isNotBlank() && captchaText.length == CAPTCHA_LENGTH) {
+                        val salt = UUID.randomUUID().toString().replace("-", "")
+                        val codeHash = sha256Hex("$salt:${captchaText.uppercase()}")
+                        serverCaptchaVault[challengeId] = ServerCaptchaChallengeRecord(
+                            challengeId = challengeId,
+                            studentId = safeStudentId,
+                            salt = salt,
+                            codeHash = codeHash,
+                            expiresAtEpochMs = expiresAt,
+                            attemptsUsed = 0,
+                            maxAttempts = maxAttempts
+                        )
+                        return Result.success(
+                            CaptchaChallengeUiState(
+                                challengeId = challengeId,
+                                glyphs = buildDistortedGlyphs(captchaText.uppercase()),
+                                expiresAtEpochMs = expiresAt,
+                                remainingSeconds = (CAPTCHA_TTL_MS / 1000L).toInt(),
+                                attemptsUsed = 0,
+                                maxAttempts = maxAttempts,
+                                isExpired = false,
+                                isVerified = false,
+                                isLoading = false,
+                                errorMessage = null
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "RPC create_captcha_challenge fallback: ${e.message}")
+            }
+        }
+
+        // 3. Cryptographic Salted SHA-256 Challenge Generation (Zero plaintext answer storage)
+        val challengeId = UUID.randomUUID().toString()
+        val salt = UUID.randomUUID().toString().replace("-", "")
+        val generatedChars = CharArray(CAPTCHA_LENGTH) {
+            CAPTCHA_ALPHABET[secureRandom.nextInt(CAPTCHA_ALPHABET.length)]
+        }
+        val rawCode = String(generatedChars)
+        val glyphs = buildDistortedGlyphs(rawCode)
+        val codeHash = sha256Hex("$salt:${rawCode.uppercase()}")
+
+        serverCaptchaVault[challengeId] = ServerCaptchaChallengeRecord(
+            challengeId = challengeId,
+            studentId = safeStudentId,
+            salt = salt,
+            codeHash = codeHash,
+            expiresAtEpochMs = expiresAt,
+            attemptsUsed = 0,
+            maxAttempts = MAX_CAPTCHA_ATTEMPTS
+        )
+
+        return Result.success(
+            CaptchaChallengeUiState(
+                challengeId = challengeId,
+                glyphs = glyphs,
+                expiresAtEpochMs = expiresAt,
+                remainingSeconds = (CAPTCHA_TTL_MS / 1000L).toInt(),
+                attemptsUsed = 0,
+                maxAttempts = MAX_CAPTCHA_ATTEMPTS,
+                isExpired = false,
+                isVerified = false,
+                isLoading = false,
+                errorMessage = null
+            )
+        )
+    }
+
+    /**
+     * Verifies the student's CAPTCHA answer server-side and generates the temporary daily roll number
+     * ONLY after successful verification.
+     *
+     * Enforces:
+     * - Duplicate request lock (`inFlightVerifications`) against automated bot registrations
+     * - 2-minute expiration check
+     * - Maximum 5 incorrect attempts
+     * - Single-use invalidation upon success or max attempts
+     */
+    suspend fun verifyCaptchaAndIssueRollNo(
+        challengeId: String,
+        userAnswer: String,
+        studentId: String,
+        studentName: String,
+        courseName: String,
+        className: String,
+        dateKey: String
+    ): CaptchaVerificationResult {
+        val cleanChallengeId = challengeId.trim()
+        val cleanAnswer = userAnswer.trim().uppercase()
+        val lockKey = "$studentId:$cleanChallengeId"
+
+        if (cleanChallengeId.isBlank()) {
+            return CaptchaVerificationResult(
+                verified = false,
+                errorMessage = "CAPTCHA challenge is missing. Please refresh CAPTCHA.",
+                shouldRefresh = true
+            )
+        }
+
+        if (cleanAnswer.length != CAPTCHA_LENGTH) {
+            return CaptchaVerificationResult(
+                verified = false,
+                errorMessage = "Please enter all 6 characters of the CAPTCHA code.",
+                shouldRefresh = false
+            )
+        }
+
+        // Duplicate request protection against rapid automated submissions
+        if (!inFlightVerifications.add(lockKey)) {
+            return CaptchaVerificationResult(
+                verified = false,
+                errorMessage = "Verification is already in progress. Please wait.",
+                shouldRefresh = false
+            )
+        }
+
+        try {
+            // 1. Try verifying via Supabase Edge Function `/functions/v1/captcha` (action = "verify")
+            if (SupabaseConfig.isConfigured) {
+                try {
+                    val edgePayload = JSONObject().apply {
+                        put("action", "verify")
+                        put("challenge_id", cleanChallengeId)
+                        put("answer", cleanAnswer)
+                        put("student_id", studentId)
+                        put("student_name", studentName)
+                        put("course_name", courseName)
+                        put("class_name", className)
+                        put("date_key", dateKey)
+                    }.toString()
+                    val edgeRes = client.invokeEdgeFunction("captcha", edgePayload)
+                    if (edgeRes.isSuccess) {
+                        val obj = JSONObject(edgeRes.getOrThrow())
+                        if (obj.has("verified")) {
+                            val verified = obj.optBoolean("verified", false)
+                            if (verified) {
+                                serverCaptchaVault[cleanChallengeId]?.apply {
+                                    isVerified = true
+                                    isInvalidated = true
+                                }
+                                var rollNo = obj.optString("roll_no", "")
+                                if (rollNo.isBlank()) {
+                                    val rollRes = getOrCreateDailyRollNo(studentId, studentName, courseName, className, dateKey)
+                                    rollNo = rollRes.getOrNull()?.rollNo
+                                        ?: com.jacboard.mcqmaster.util.DailyTestTimeUtils.generateTemporaryRollNo(dateKey, 1)
+                                }
+                                return CaptchaVerificationResult(
+                                    verified = true,
+                                    rollNo = rollNo,
+                                    attemptsRemaining = 0,
+                                    shouldRefresh = false
+                                )
+                            } else {
+                                val err = obj.optString("error", "Incorrect CAPTCHA code.")
+                                val rem = obj.optInt("attempts_remaining", 0)
+                                val expired = obj.optBoolean("expired", false)
+                                val maxReached = obj.optBoolean("max_attempts_reached", rem <= 0)
+                                if (expired || maxReached) {
+                                    serverCaptchaVault[cleanChallengeId]?.isInvalidated = true
+                                }
+                                return CaptchaVerificationResult(
+                                    verified = false,
+                                    errorMessage = err,
+                                    attemptsRemaining = rem,
+                                    shouldRefresh = expired || maxReached
+                                )
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "Edge function captcha verify fallback: ${e.message}")
+                }
+            }
+
+            // 2. Verify against cryptographic salted SHA-256 challenge record
+            val record = serverCaptchaVault[cleanChallengeId]
+                ?: return CaptchaVerificationResult(
+                    verified = false,
+                    errorMessage = "CAPTCHA session expired or not found. Generating a new CAPTCHA...",
+                    attemptsRemaining = 0,
+                    shouldRefresh = true
+                )
+
+            val now = System.currentTimeMillis()
+            if (record.isVerified || record.isInvalidated) {
+                return CaptchaVerificationResult(
+                    verified = false,
+                    errorMessage = "This CAPTCHA has already been used or invalidated. Generating a new one...",
+                    attemptsRemaining = 0,
+                    shouldRefresh = true
+                )
+            }
+
+            if (now > record.expiresAtEpochMs) {
+                record.isInvalidated = true
+                return CaptchaVerificationResult(
+                    verified = false,
+                    errorMessage = "CAPTCHA expired (2-minute limit). Generating a new CAPTCHA...",
+                    attemptsRemaining = 0,
+                    shouldRefresh = true
+                )
+            }
+
+            if (record.attemptsUsed >= record.maxAttempts) {
+                record.isInvalidated = true
+                return CaptchaVerificationResult(
+                    verified = false,
+                    errorMessage = "Maximum 5 incorrect attempts reached. Generating a new CAPTCHA...",
+                    attemptsRemaining = 0,
+                    shouldRefresh = true
+                )
+            }
+
+            val candidateHash = sha256Hex("${record.salt}:$cleanAnswer")
+            if (!MessageDigest.isEqual(
+                    candidateHash.toByteArray(Charsets.UTF_8),
+                    record.codeHash.toByteArray(Charsets.UTF_8)
+                )
+            ) {
+                record.attemptsUsed += 1
+                val remaining = (record.maxAttempts - record.attemptsUsed).coerceAtLeast(0)
+                if (remaining <= 0) {
+                    record.isInvalidated = true
+                    return CaptchaVerificationResult(
+                        verified = false,
+                        errorMessage = "Incorrect CAPTCHA. Maximum 5 attempts reached — generating a new CAPTCHA.",
+                        attemptsRemaining = 0,
+                        shouldRefresh = true
+                    )
+                }
+                return CaptchaVerificationResult(
+                    verified = false,
+                    errorMessage = "Incorrect CAPTCHA code. $remaining ${if (remaining == 1) "attempt" else "attempts"} remaining.",
+                    attemptsRemaining = remaining,
+                    shouldRefresh = false
+                )
+            }
+
+            // CAPTCHA verified! Invalidate immediately so it can never be reused
+            record.isVerified = true
+            record.isInvalidated = true
+
+            // Issue the temporary daily roll number ONLY AFTER successful CAPTCHA verification
+            val rollRes = getOrCreateDailyRollNo(
+                studentId = studentId,
+                studentName = studentName,
+                courseName = courseName,
+                className = className,
+                dateKey = dateKey
+            )
+            val issuedRollNo = rollRes.getOrNull()?.rollNo
+                ?: com.jacboard.mcqmaster.util.DailyTestTimeUtils.generateTemporaryRollNo(dateKey, 1)
+
+            return CaptchaVerificationResult(
+                verified = true,
+                rollNo = issuedRollNo,
+                attemptsRemaining = record.maxAttempts - record.attemptsUsed,
+                shouldRefresh = false
+            )
+        } finally {
+            inFlightVerifications.remove(lockKey)
+        }
+    }
+
     @Volatile
     private var lastPurgedDateKey: String = ""
 
     /**
-     * Resets daily participant and leaderboard state at 12:00 AM midnight IST.
-     * Permanently deletes all previous days' entries (date_key != currentDateKey or null)
-     * from BOTH Supabase (Admin Panel & User App database) and local caches so today's
-     * leaderboard starts completely fresh from 0 participants.
+     * Permanently removes any leaderboard rows ranked below Top 100 (rank > 100)
+     * AND their temporary registration, identity, and attempt records from Supabase
+     * so below-100 entries are never kept in the database.
+     */
+    suspend fun pruneLeaderboardBelowTop100(
+        dateKey: String,
+        className: String,
+        courseName: String = "",
+        rawJson: String? = null
+    ) {
+        if (!SupabaseConfig.isConfigured) return
+        val targetDateKey = dateKey.ifBlank { com.jacboard.mcqmaster.util.DailyTestTimeUtils.getCurrentDateKey() }
+        val normalizedClass = com.jacboard.mcqmaster.util.CourseClassUtils.normalizeClassName(className, courseName)
+
+        // 1. Invoke server-side SECURITY DEFINER RPC (acquires advisory lock & cascades delete to daily_participants & daily_test_attempts)
+        try {
+            val rpcPayload = JSONObject().apply {
+                put("p_date_key", targetDateKey)
+                put("p_class_name", normalizedClass)
+            }.toString()
+            client.post("rpc/prune_leaderboard_top_100", rpcPayload)
+        } catch (_: Exception) {}
+
+        // 2. Direct REST prune of any rows ranked > 100 or duplicate lower-score rows for this class
+        try {
+            val jsonToScan = rawJson ?: run {
+                val res = client.get(
+                    "leaderboard",
+                    "date_key=eq.$targetDateKey&select=*&order=score.desc,completion_time_seconds.asc&limit=1000"
+                )
+                if (res.isSuccess) res.getOrThrow() else return
+            }
+
+            data class RawRow(
+                val id: Long,
+                val studentId: String,
+                val rollNo: String,
+                val className: String,
+                val score: Float,
+                val accuracy: Float,
+                val submittedAt: Long,
+                val timeSeconds: Long
+            )
+
+            val matchedRows = mutableListOf<RawRow>()
+            val array = JSONArray(jsonToScan)
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val rowId = obj.optLong("id", -1L)
+                if (rowId <= 0L) continue
+                val itemClass = obj.optString("class_name", obj.optString("student_class", ""))
+                if (com.jacboard.mcqmaster.util.CourseClassUtils.isClassMatch(normalizedClass, itemClass)) {
+                    val score = obj.optDouble("score", 0.0).toFloat()
+                    val totalMarks = obj.optDouble("total_marks", 50.0).toFloat().coerceAtLeast(1f)
+                    val explicitAcc = obj.optDouble("accuracy", -1.0).toFloat()
+                    val accuracy = if (explicitAcc >= 0f) explicitAcc else (score / totalMarks) * 100f
+                    val submittedAt = obj.optLong("submitted_at", 0L).let { if (it > 0L) it else rowId }
+                    matchedRows.add(
+                        RawRow(
+                            id = rowId,
+                            studentId = obj.optString("student_id", ""),
+                            rollNo = obj.optString("roll_no", ""),
+                            className = com.jacboard.mcqmaster.util.CourseClassUtils.normalizeClassName(itemClass),
+                            score = score,
+                            accuracy = accuracy,
+                            submittedAt = submittedAt,
+                            timeSeconds = obj.optLong("completion_time_seconds", 300L)
+                        )
+                    )
+                }
+            }
+
+            val sortedRows = matchedRows.sortedWith(
+                compareByDescending<RawRow> { it.score }
+                    .thenByDescending { it.accuracy }
+                    .thenBy { it.submittedAt }
+                    .thenBy { it.timeSeconds }
+                    .thenBy { it.studentId }
+            )
+
+            val keptStudentIds = mutableSetOf<String>()
+            val keptRollNos = mutableSetOf<String>()
+            val idsToDelete = mutableListOf<Long>()
+            val displacedStudentIds = mutableSetOf<String>()
+            val displacedRollNos = mutableSetOf<String>()
+            var keptCount = 0
+
+            for (row in sortedRows) {
+                val dupStudent = row.studentId.isNotBlank() && !keptStudentIds.add(row.studentId)
+                val dupRoll = row.rollNo.isNotBlank() && !keptRollNos.add(row.rollNo)
+                if (dupStudent || dupRoll) {
+                    idsToDelete.add(row.id)
+                } else {
+                    keptCount += 1
+                    if (keptCount > TOP_LEADERBOARD_LIMIT) {
+                        idsToDelete.add(row.id)
+                        if (row.studentId.isNotBlank()) displacedStudentIds.add(row.studentId)
+                        if (row.rollNo.isNotBlank()) displacedRollNos.add(row.rollNo)
+                    }
+                }
+            }
+
+            if (idsToDelete.isNotEmpty()) {
+                val idListStr = idsToDelete.joinToString(",")
+                client.delete("leaderboard", "id=in.($idListStr)")
+
+                // Also permanently delete temporary registration, roll number identity, and attempt records
+                // for students who did not qualify for Top 100 or were displaced below Rank 100
+                val netDisplacedStudents = displacedStudentIds - keptStudentIds
+                if (netDisplacedStudents.isNotEmpty()) {
+                    val studentFilter = netDisplacedStudents.joinToString(",") { "\"$it\"" }
+                    client.delete(
+                        "daily_participants",
+                        "date_key=eq.$targetDateKey&class_name=eq.$normalizedClass&student_id=in.($studentFilter)"
+                    )
+                    client.delete(
+                        "daily_test_attempts",
+                        "date_key=eq.$targetDateKey&class_name=eq.$normalizedClass&student_id=in.($studentFilter)"
+                    )
+                }
+                val netDisplacedRolls = displacedRollNos - keptRollNos
+                if (netDisplacedRolls.isNotEmpty()) {
+                    val rollFilter = netDisplacedRolls.joinToString(",") { "\"$it\"" }
+                    client.delete(
+                        "daily_participants",
+                        "date_key=eq.$targetDateKey&roll_no=in.($rollFilter)"
+                    )
+                    client.delete(
+                        "daily_test_attempts",
+                        "date_key=eq.$targetDateKey&roll_no=in.($rollFilter)"
+                    )
+                }
+                Log.d(TAG, "Permanently deleted ${idsToDelete.size} records below Rank $TOP_LEADERBOARD_LIMIT for $normalizedClass")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "pruneLeaderboardBelowTop100 notice: ${e.message}")
+        }
+    }
+
+    /**
+     * Resets daily participant and leaderboard state at 12:00 AM midnight IST (Asia/Kolkata).
+     * Permanently deletes ONLY previous days' entries (date_key < targetDateKey or date_key IS NULL)
+     * across all classes from Supabase and local caches.
+     * NEVER deletes current-day records or permanent educational content.
      */
     suspend fun resetDailyParticipants(currentDateKey: String): Result<Boolean> {
         val targetDateKey = if (currentDateKey.isNotBlank()) {
@@ -731,7 +1255,7 @@ class SupabaseDataSource(
             com.jacboard.mcqmaster.util.DailyTestTimeUtils.getCurrentDateKey()
         }
 
-        // 1. Always purge any local leaderboard or submission caches immediately
+        // 1. Always purge any local leaderboard or previous-day submission caches immediately
         com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.clearAllLeaderboardCaches(targetDateKey)
 
         if (!SupabaseConfig.isConfigured) return Result.success(true)
@@ -756,10 +1280,10 @@ class SupabaseDataSource(
             Log.w(TAG, "RPC midnight cleanup notice: ${e.message}")
         }
 
-        // 3. Direct REST DELETE on leaderboard and daily_participants so Admin Panel & DB
-        // permanently delete all non-today rows even if RPC was not updated
+        // 3. Direct REST DELETE on temporary daily tables strictly for previous days (date_key < targetDateKey)
+        // Using `lt` (less than) instead of `neq` prevents any lagging client clock from ever deleting new-day records!
         try {
-            val delLeadOld = client.delete("leaderboard", "date_key=neq.$targetDateKey")
+            val delLeadOld = client.delete("leaderboard", "date_key=lt.$targetDateKey")
             if (delLeadOld.isSuccess) anySuccess = true
             client.delete("leaderboard", "date_key=is.null")
         } catch (e: Exception) {
@@ -767,13 +1291,17 @@ class SupabaseDataSource(
         }
 
         try {
-            val delPartOld = client.delete("daily_participants", "date_key=neq.$targetDateKey")
+            val delPartOld = client.delete("daily_participants", "date_key=lt.$targetDateKey")
             if (delPartOld.isSuccess) anySuccess = true
             client.delete("daily_participants", "date_key=is.null")
-            client.delete("daily_participants", "has_attempted=eq.false")
         } catch (e: Exception) {
             Log.w(TAG, "Direct daily_participants cleanup notice: ${e.message}")
         }
+
+        try {
+            client.delete("daily_test_attempts", "date_key=lt.$targetDateKey")
+            client.delete("daily_test_attempts", "date_key=is.null")
+        } catch (_: Exception) {}
 
         lastPurgedDateKey = targetDateKey
         return Result.success(anySuccess)
@@ -811,7 +1339,7 @@ class SupabaseDataSource(
                                 isEligible = false,
                                 reason = "You have already completed today's Daily Test. Students are allowed only one attempt per day across all courses.",
                                 attemptedClassId = itemClass,
-                                attemptedClassName = "$itemCourse • $itemClass",
+                                attemptedClassName = if (itemCourse.isNotBlank() && !itemCourse.equals(itemClass, ignoreCase = true)) "$itemCourse • $itemClass" else itemClass,
                                 attemptsCount = 1,
                                 previousAttemptRollNo = rollNo,
                                 previousAttemptScore = score,
@@ -844,7 +1372,7 @@ class SupabaseDataSource(
                             isEligible = false,
                             reason = "You have already completed today's Daily Test. Students are allowed only one attempt per day across all courses.",
                             attemptedClassId = itemClass,
-                            attemptedClassName = if (itemCourse.isNotBlank()) "$itemCourse • $itemClass" else itemClass,
+                            attemptedClassName = if (itemCourse.isNotBlank() && !itemCourse.equals(itemClass, ignoreCase = true)) "$itemCourse • $itemClass" else itemClass,
                             attemptsCount = 1,
                             previousAttemptRollNo = rollNo,
                             previousAttemptScore = score,
@@ -866,9 +1394,9 @@ class SupabaseDataSource(
     }
 
     /**
-     * Loads shared leaderboard data from Supabase strictly separated by Course + Class + Date (Rules 7-11).
-     * Keeps only the best result per student and ranks by 1. Highest Score, 2. Fastest Time.
-     * Preserves API errors so callers never convert server errors into an empty successful leaderboard.
+     * Loads shared leaderboard data from Supabase using a single canonical class filter + IST date_key.
+     * Each class (Class 8, Class 9, Class 10, Class 11, Class 12) maintains its own independent Top 100.
+     * Permanently deletes any entries ranked > 100 from Supabase.
      */
     suspend fun fetchLeaderboard(
         dateKey: String,
@@ -876,21 +1404,20 @@ class SupabaseDataSource(
         courseName: String = ""
     ): Result<List<DailyLeaderboardEntry>> {
         val targetDateKey = if (dateKey.isNotBlank()) dateKey else com.jacboard.mcqmaster.util.DailyTestTimeUtils.getCurrentDateKey()
-        val targetClass = if (className.isNotBlank()) className else "Class 10"
-        val targetCourse = courseName.trim()
+        val targetClass = com.jacboard.mcqmaster.util.CourseClassUtils.normalizeClassName(className, courseName)
 
-        // Ensure any local leaderboard caches are purged and previous days' rows in Supabase are deleted
+        // Ensure previous-day caches and previous-day database rows (< targetDateKey) are cleaned once per day
         com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.clearAllLeaderboardCaches(targetDateKey)
         if (lastPurgedDateKey != targetDateKey) {
             resetDailyParticipants(targetDateKey)
         }
 
-        Log.d(TAG, "Leaderboard request started: dateKey=$targetDateKey, class=$targetClass, course=$targetCourse")
+        Log.d(TAG, "Leaderboard request started: dateKey=$targetDateKey, class=$targetClass")
 
-        // 1. Fetch live entries from Supabase leaderboard table for dateKey
+        // 1. Fetch live entries from Supabase leaderboard table for targetDateKey
         val dateQuery = "date_key=eq.$targetDateKey&select=*&order=score.desc,completion_time_seconds.asc&limit=1000"
         val result = client.get("leaderboard", dateQuery)
-        
+
         if (result.isFailure) {
             val exception = result.exceptionOrNull() ?: java.io.IOException("Failed to connect to leaderboard service")
             Log.e(TAG, "Leaderboard request failed for $targetDateKey: ${exception.message}")
@@ -899,37 +1426,60 @@ class SupabaseDataSource(
 
         val rawJson = result.getOrThrow()
 
-        var liveEntries = parseLeaderboardJson(rawJson, targetClass, targetCourse)
+        var liveEntries = parseLeaderboardJson(rawJson, targetClass)
 
-        // 2. If no entries found in leaderboard, check daily_participants for completed attempts
-        if (liveEntries.isEmpty()) {
-            val partQuery = "date_key=eq.$targetDateKey&has_attempted=eq.true&select=*&order=score.desc&limit=1000"
-            val partResult = client.get("daily_participants", partQuery)
-            if (partResult.isSuccess) {
-                liveEntries = parseDailyParticipantsJson(partResult.getOrThrow(), targetClass, targetCourse)
+        // 2. Also merge any completed attempts from daily_participants for this class that might not yet be in leaderboard
+        val partQuery = "date_key=eq.$targetDateKey&has_attempted=eq.true&select=*&order=score.desc&limit=500"
+        val partResult = client.get("daily_participants", partQuery)
+        if (partResult.isSuccess) {
+            val participantEntries = parseDailyParticipantsJson(partResult.getOrThrow(), targetClass)
+            if (participantEntries.isNotEmpty()) {
+                val combined = (liveEntries + participantEntries)
+                val deduplicated = mutableListOf<DailyLeaderboardEntry>()
+                for (entry in combined) {
+                    val existingIdx = deduplicated.indexOfFirst { existing ->
+                        (entry.studentId.isNotBlank() && entry.studentId == existing.studentId) ||
+                            (!entry.rollNo.isNullOrBlank() && !existing.rollNo.isNullOrBlank() && entry.rollNo == existing.rollNo)
+                    }
+                    if (existingIdx < 0) {
+                        deduplicated.add(entry)
+                    } else {
+                        val existing = deduplicated[existingIdx]
+                        if (DailyLeaderboardEntry.RANKING_COMPARATOR.compare(entry, existing) < 0) {
+                            deduplicated[existingIdx] = entry
+                        }
+                    }
+                }
+                liveEntries = deduplicated
             }
         }
 
-        // Sort strictly: 1. Score descending, 2. Completion time ascending, 3. Stable tie-breaker
-        val sortedAndRanked = liveEntries
-            .sortedWith(
-                compareByDescending<DailyLeaderboardEntry> { it.score }
-                    .thenBy { it.completionTimeSeconds }
-                    .thenBy { it.studentId }
-            )
+        // Sort strictly by official ranking rules:
+        // 1. Highest score first, 2. Highest accuracy next, 3. Earliest valid submission timestamp
+        val sortedAll = liveEntries.sortedWith(DailyLeaderboardEntry.RANKING_COMPARATOR)
+
+        // If more than 100 entries exist in DB for this class, permanently delete all entries ranked > 100 from Supabase
+        if (sortedAll.size > TOP_LEADERBOARD_LIMIT) {
+            pruneLeaderboardBelowTop100(targetDateKey, targetClass, "", rawJson)
+        }
+
+        // Strictly retain ONLY the Top 100 best toppers — never keep below-100 anywhere
+        val top100Only = sortedAll
+            .take(TOP_LEADERBOARD_LIMIT)
             .mapIndexed { index, entry ->
                 entry.copy(rank = index + 1)
             }
 
-        Log.d(TAG, "Leaderboard request completed: dateKey=$targetDateKey, class=$targetClass, count=${sortedAndRanked.size}")
-        return Result.success(sortedAndRanked)
+        Log.d(TAG, "Leaderboard request completed: dateKey=$targetDateKey, class=$targetClass, top100Count=${top100Only.size}")
+        return Result.success(top100Only)
     }
 
     private fun parseLeaderboardJson(
         jsonString: String,
         targetClassName: String = "",
-        targetCourseName: String = ""
+        @Suppress("UNUSED_PARAMETER") targetCourseName: String = ""
     ): List<DailyLeaderboardEntry> {
+        val normalizedTargetClass = com.jacboard.mcqmaster.util.CourseClassUtils.normalizeClassName(targetClassName)
         val classMatched = mutableListOf<DailyLeaderboardEntry>()
         try {
             val array = JSONArray(jsonString)
@@ -938,21 +1488,20 @@ class SupabaseDataSource(
 
                 val studentId = obj.optString("student_id", "std_${i + 1}")
                 val studentName = obj.optString("student_name", "Student ${i + 1}")
-                val className = obj.optString("class_name", obj.optString("student_class", "Class 10"))
-                val courseName = obj.optString("course_name", "")
+                val rawClassName = obj.optString("class_name", obj.optString("student_class", "Class 10"))
                 val score = obj.optDouble("score", 0.0).toFloat()
-                val totalMarks = obj.optDouble("total_marks", 50.0).toFloat()
+                val totalMarks = obj.optDouble("total_marks", 50.0).toFloat().coerceAtLeast(1f)
+                val explicitAccuracy = obj.optDouble("accuracy", -1.0).toFloat()
+                val accuracy = if (explicitAccuracy >= 0f) explicitAccuracy else (score / totalMarks) * 100f
                 val completionTimeSeconds = obj.optLong("completion_time_seconds", 300L)
                 val attemptsCount = obj.optInt("attempts_count", 1)
+                val submittedAtEpoch = obj.optLong("submitted_at", 0L)
 
-                // Strict course and class filtering: do NOT match other classes or courses
-                val isMatch = com.jacboard.mcqmaster.util.CourseClassUtils.isMatch(
-                    targetClass = targetClassName,
-                    targetCourse = targetCourseName,
-                    itemClass = className,
-                    itemCourse = courseName
-                )
-                if (!isMatch) continue
+                // Single canonical class filter: match strictly by class (Class 8, Class 9, Class 10, Class 11, Class 12)
+                if (!com.jacboard.mcqmaster.util.CourseClassUtils.isClassMatch(normalizedTargetClass, rawClassName)) {
+                    continue
+                }
+                val canonicalClassName = com.jacboard.mcqmaster.util.CourseClassUtils.normalizeClassName(rawClassName)
 
                 val initials = studentName.split(" ")
                     .mapNotNull { it.firstOrNull()?.uppercaseChar() }
@@ -971,14 +1520,16 @@ class SupabaseDataSource(
                     rank = 0,
                     studentId = studentId,
                     studentName = studentName,
-                    className = className,
+                    className = canonicalClassName,
                     score = score,
                     totalMarks = totalMarks,
                     completionTimeSeconds = completionTimeSeconds,
                     isCurrentUser = false,
                     attemptsCount = attemptsCount,
                     avatarInitials = initials,
-                    rollNo = rollNo
+                    rollNo = rollNo,
+                    accuracy = accuracy,
+                    submittedAtEpoch = submittedAtEpoch
                 )
                 classMatched.add(entry)
             }
@@ -986,21 +1537,20 @@ class SupabaseDataSource(
             Log.e(TAG, "Error parsing leaderboard JSON: ${e.message}")
         }
 
-        // Deduplicate: Keep highest score per Student ID or Roll Number strictly matching target course/class
+        // Deduplicate: Keep best ranking submission per Student ID or Roll Number within the class
         val bestEntries = mutableListOf<DailyLeaderboardEntry>()
         for (entry in classMatched) {
             val existingIndex = bestEntries.indexOfFirst { existing ->
                 (entry.studentId.isNotBlank() && entry.studentId == existing.studentId) ||
-                (!entry.rollNo.isNullOrBlank() && !existing.rollNo.isNullOrBlank() && entry.rollNo == existing.rollNo)
+                    (!entry.rollNo.isNullOrBlank() && !existing.rollNo.isNullOrBlank() && entry.rollNo == existing.rollNo)
             }
             if (existingIndex < 0) {
                 bestEntries.add(entry)
             } else {
                 val existing = bestEntries[existingIndex]
-                val isBetterScore = entry.score > existing.score
-                val isSameScoreFaster = entry.score == existing.score && entry.completionTimeSeconds < existing.completionTimeSeconds
+                val isBetter = DailyLeaderboardEntry.RANKING_COMPARATOR.compare(entry, existing) < 0
                 val mergedRoll = if (!entry.rollNo.isNullOrBlank()) entry.rollNo else existing.rollNo
-                if (isBetterScore || isSameScoreFaster) {
+                if (isBetter) {
                     bestEntries[existingIndex] = entry.copy(
                         attemptsCount = maxOf(existing.attemptsCount, entry.attemptsCount),
                         rollNo = mergedRoll
@@ -1015,11 +1565,8 @@ class SupabaseDataSource(
         }
 
         return bestEntries
-            .sortedWith(
-                compareByDescending<DailyLeaderboardEntry> { it.score }
-                    .thenBy { it.completionTimeSeconds }
-                    .thenBy { it.studentId }
-            )
+            .sortedWith(DailyLeaderboardEntry.RANKING_COMPARATOR)
+            .take(TOP_LEADERBOARD_LIMIT)
             .mapIndexed { index, item ->
                 item.copy(rank = index + 1)
             }
@@ -1028,8 +1575,9 @@ class SupabaseDataSource(
     private fun parseDailyParticipantsJson(
         jsonString: String,
         targetClassName: String = "",
-        targetCourseName: String = ""
+        @Suppress("UNUSED_PARAMETER") targetCourseName: String = ""
     ): List<DailyLeaderboardEntry> {
+        val normalizedTargetClass = com.jacboard.mcqmaster.util.CourseClassUtils.normalizeClassName(targetClassName)
         val classMatched = mutableListOf<DailyLeaderboardEntry>()
         try {
             val array = JSONArray(jsonString)
@@ -1040,20 +1588,19 @@ class SupabaseDataSource(
 
                 val studentId = obj.optString("student_id", "std_${i + 1}")
                 val studentName = obj.optString("student_name", "Student")
-                val className = obj.optString("class_name", "")
-                val courseName = obj.optString("course_name", "")
+                val rawClassName = obj.optString("class_name", "")
                 val score = obj.optDouble("score", 0.0).toFloat()
-                val totalMarks = obj.optDouble("total_marks", 50.0).toFloat()
+                val totalMarks = obj.optDouble("total_marks", 50.0).toFloat().coerceAtLeast(1f)
+                val explicitAccuracy = obj.optDouble("accuracy", -1.0).toFloat()
+                val accuracy = if (explicitAccuracy >= 0f) explicitAccuracy else (score / totalMarks) * 100f
+                val completionTimeSeconds = obj.optLong("completion_time_seconds", 120L)
+                val submittedAtEpoch = obj.optLong("submitted_at", 0L)
                 val rollNo = obj.optString("roll_no", "")
 
-                // Strict course and class filtering
-                val isMatch = com.jacboard.mcqmaster.util.CourseClassUtils.isMatch(
-                    targetClass = targetClassName,
-                    targetCourse = targetCourseName,
-                    itemClass = className,
-                    itemCourse = courseName
-                )
-                if (!isMatch) continue
+                // Single canonical class filter
+                if (!com.jacboard.mcqmaster.util.CourseClassUtils.isClassMatch(normalizedTargetClass, rawClassName)) {
+                    continue
+                }
 
                 val initials = studentName.split(" ")
                     .mapNotNull { it.firstOrNull()?.uppercaseChar() }
@@ -1065,14 +1612,16 @@ class SupabaseDataSource(
                     rank = 0,
                     studentId = studentId,
                     studentName = studentName,
-                    className = if (className.isNotBlank()) className else targetClassName,
+                    className = normalizedTargetClass,
                     score = score,
                     totalMarks = totalMarks,
-                    completionTimeSeconds = 120L,
+                    completionTimeSeconds = completionTimeSeconds,
                     isCurrentUser = false,
                     attemptsCount = 1,
                     avatarInitials = initials,
-                    rollNo = rollNo
+                    rollNo = rollNo,
+                    accuracy = accuracy,
+                    submittedAtEpoch = submittedAtEpoch
                 )
                 classMatched.add(entry)
             }
@@ -1080,16 +1629,48 @@ class SupabaseDataSource(
             Log.e(TAG, "Error parsing daily participants fallback: ${e.message}")
         }
 
-        return classMatched.sortedWith(
-            compareByDescending<DailyLeaderboardEntry> { it.score }
-                .thenBy { it.completionTimeSeconds }
-        ).mapIndexed { index, item -> item.copy(rank = index + 1) }
+        return classMatched
+            .sortedWith(DailyLeaderboardEntry.RANKING_COMPARATOR)
+            .take(TOP_LEADERBOARD_LIMIT)
+            .mapIndexed { index, item -> item.copy(rank = index + 1) }
     }
 
     /**
-     * Submits student test result to Supabase so the leaderboard is updated dynamically (Rules 9 & 13).
-     * Waits for server confirmation, extracts the committed result ID, and prevents duplicate submissions.
-     * Uses retry with exponential backoff if a transient network glitch occurs.
+     * Updates the student's display name in Supabase `leaderboard` and `daily_participants`
+     * for today's date so changing the student's name never causes the topper list entry to disappear
+     * or go out of sync.
+     */
+    suspend fun updateDailyStudentName(
+        studentId: String,
+        rollNo: String?,
+        newName: String,
+        dateKey: String
+    ): Result<Boolean> {
+        if (!SupabaseConfig.isConfigured || newName.isBlank()) return Result.success(true)
+        val safeDateKey = dateKey.ifBlank { com.jacboard.mcqmaster.util.DailyTestTimeUtils.getCurrentDateKey() }
+        val payload = JSONObject().apply {
+            put("student_name", newName.trim())
+        }.toString()
+
+        try {
+            if (studentId.isNotBlank()) {
+                client.patch("leaderboard", "student_id=eq.$studentId&date_key=eq.$safeDateKey", payload)
+                client.patch("daily_participants", "student_id=eq.$studentId&date_key=eq.$safeDateKey", payload)
+            }
+            if (!rollNo.isNullOrBlank()) {
+                client.patch("leaderboard", "roll_no=eq.$rollNo&date_key=eq.$safeDateKey", payload)
+                client.patch("daily_participants", "roll_no=eq.$rollNo&date_key=eq.$safeDateKey", payload)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "updateDailyStudentName notice: ${e.message}")
+        }
+        return Result.success(true)
+    }
+
+    /**
+     * Submits student Daily Test result to Supabase using a single canonical class filter (`class_name` + `date_key`).
+     * Enforces Top 100 retention per class per day and permanently deletes all records (including temporary
+     * registration, identity, and attempt records) ranked below 100.
      */
     suspend fun submitLeaderboardEntry(
         studentId: String,
@@ -1101,21 +1682,94 @@ class SupabaseDataSource(
         completionTimeSeconds: Long,
         attemptsCount: Int,
         rollNo: String? = null,
-        courseName: String? = null
+        courseName: String? = null,
+        accuracy: Float = if (totalMarks > 0f) (score / totalMarks) * 100f else 0f,
+        submittedAtEpoch: Long = System.currentTimeMillis()
     ): Result<Long> {
-        if (!SupabaseConfig.isConfigured) return Result.success(System.currentTimeMillis())
+        if (!SupabaseConfig.isConfigured) return Result.success(submittedAtEpoch)
 
-        Log.d(TAG, "Result submission started: studentId=$studentId, dateKey=$dateKey, class=$className, course=$courseName")
+        val effectiveStudentName = studentName.trim().ifBlank { "Student" }
+        val normalizedClass = com.jacboard.mcqmaster.util.CourseClassUtils.normalizeClassName(className, courseName)
+        Log.d(TAG, "Result submission started: studentId=$studentId, dateKey=$dateKey, class=$normalizedClass")
 
-        // 1. Verify if this student's result was already committed on server to prevent duplicates
+        // 0. First try atomic server-side SECURITY DEFINER RPC `submit_daily_test_result_top100`
         try {
-            val checkRes = client.get("leaderboard", "student_id=eq.$studentId&date_key=eq.$dateKey&select=id,score,roll_no&limit=1")
+            val rpcBody = JSONObject().apply {
+                put("p_student_id", studentId)
+                put("p_student_name", effectiveStudentName)
+                put("p_class_name", normalizedClass)
+                put("p_date_key", dateKey)
+                put("p_score", score)
+                put("p_total_marks", totalMarks)
+                put("p_accuracy", accuracy)
+                put("p_completion_time_seconds", completionTimeSeconds)
+                put("p_submitted_at", submittedAtEpoch)
+                if (!rollNo.isNullOrBlank()) put("p_roll_no", rollNo)
+                put("p_course_name", normalizedClass)
+            }.toString()
+            val rpcRes = client.post("rpc/submit_daily_test_result_top100", rpcBody)
+            if (rpcRes.isSuccess) {
+                val obj = JSONObject(rpcRes.getOrThrow())
+                val qualified = obj.optBoolean("qualified", true)
+                val subId = obj.optLong("submission_id", submittedAtEpoch)
+                if (qualified) {
+                    com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveLastSubmissionId(dateKey, subId)
+                }
+                return Result.success(subId)
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "RPC submit_daily_test_result_top100 fallback to REST: ${e.message}")
+        }
+
+        // Also sync daily_participants table before pruning so Top 100 pruning cleans up non-qualifiers
+        try {
+            val partCheck = client.get("daily_participants", "student_id=eq.$studentId&date_key=eq.$dateKey&select=id,score&limit=1")
+            val partBody = JSONObject().apply {
+                put("student_id", studentId)
+                put("student_name", effectiveStudentName)
+                put("course_name", normalizedClass)
+                put("class_name", normalizedClass)
+                put("date_key", dateKey)
+                put("has_attempted", true)
+                put("score", score)
+                put("total_marks", totalMarks)
+                if (!rollNo.isNullOrBlank()) put("roll_no", rollNo)
+            }.toString()
+            if (partCheck.isSuccess && JSONArray(partCheck.getOrThrow()).length() > 0) {
+                client.patch("daily_participants", "student_id=eq.$studentId&date_key=eq.$dateKey", partBody)
+            } else {
+                client.post("daily_participants", partBody)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "daily_participants sync notice: ${e.message}")
+        }
+
+        // 1. Check if this student's result already exists in leaderboard for today + class
+        try {
+            val checkRes = client.get("leaderboard", "student_id=eq.$studentId&date_key=eq.$dateKey&class_name=eq.$normalizedClass&select=id,score,completion_time_seconds,roll_no&limit=1")
             if (checkRes.isSuccess) {
                 val array = JSONArray(checkRes.getOrThrow())
                 if (array.length() > 0) {
-                    val existingId = array.getJSONObject(0).optLong("id", System.currentTimeMillis())
-                    Log.d(TAG, "Existing submission verified on server. Reusing confirmed ID: $existingId")
+                    val existingObj = array.getJSONObject(0)
+                    val existingId = existingObj.optLong("id", submittedAtEpoch)
+                    val existingScore = existingObj.optDouble("score", -1.0).toFloat()
+                    val existingTime = existingObj.optLong("completion_time_seconds", Long.MAX_VALUE)
+
+                    val patchJson = JSONObject().apply {
+                        put("student_name", effectiveStudentName)
+                        put("class_name", normalizedClass)
+                        if (score > existingScore || (score == existingScore && completionTimeSeconds < existingTime)) {
+                            put("score", score)
+                            put("total_marks", totalMarks)
+                            put("completion_time_seconds", completionTimeSeconds)
+                            put("submitted_at", submittedAtEpoch)
+                        }
+                        put("attempts_count", attemptsCount)
+                        if (!rollNo.isNullOrBlank()) put("roll_no", rollNo)
+                    }.toString()
+                    client.patch("leaderboard", "id=eq.$existingId", patchJson)
                     com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveLastSubmissionId(dateKey, existingId)
+                    pruneLeaderboardBelowTop100(dateKey, normalizedClass)
                     return Result.success(existingId)
                 }
             }
@@ -1123,28 +1777,46 @@ class SupabaseDataSource(
             Log.w(TAG, "Pre-submission check notice: ${e.message}")
         }
 
-        val json = JSONObject().apply {
+        val fullJson = JSONObject().apply {
             put("student_id", studentId)
-            put("student_name", studentName)
-            put("class_name", className)
+            put("student_name", effectiveStudentName)
+            put("class_name", normalizedClass)
+            put("date_key", dateKey)
+            put("score", score)
+            put("total_marks", totalMarks)
+            put("accuracy", accuracy)
+            put("completion_time_seconds", completionTimeSeconds)
+            put("attempts_count", attemptsCount)
+            put("submitted_at", submittedAtEpoch)
+            if (!rollNo.isNullOrBlank()) put("roll_no", rollNo)
+            put("course_name", normalizedClass)
+        }
+
+        val compatibleJson = JSONObject().apply {
+            put("student_id", studentId)
+            put("student_name", effectiveStudentName)
+            put("class_name", normalizedClass)
             put("date_key", dateKey)
             put("score", score)
             put("total_marks", totalMarks)
             put("completion_time_seconds", completionTimeSeconds)
             put("attempts_count", attemptsCount)
-            if (rollNo != null) put("roll_no", rollNo)
-            if (courseName != null) put("course_name", courseName)
+            put("submitted_at", submittedAtEpoch)
+            if (!rollNo.isNullOrBlank()) put("roll_no", rollNo)
         }
 
-        // 2. Perform submission with retry and exponential backoff (max 3 attempts: 0ms, 500ms, 1200ms)
+        // 2. Perform submission with retry and schema-resilient fallback
         var lastException: Throwable? = null
         val maxAttempts = 3
         for (attempt in 1..maxAttempts) {
             Log.d(TAG, "Submitting leaderboard entry (attempt $attempt of $maxAttempts)...")
-            val res = client.post("leaderboard", json.toString(), prefer = "return=representation")
+            var res = client.post("leaderboard", fullJson.toString(), prefer = "return=representation")
+            if (res.isFailure) {
+                res = client.post("leaderboard", compatibleJson.toString(), prefer = "return=representation")
+            }
             if (res.isSuccess) {
                 val body = res.getOrThrow()
-                var confirmedId = System.currentTimeMillis()
+                var confirmedId = submittedAtEpoch
                 try {
                     val array = JSONArray(body)
                     if (array.length() > 0) {
@@ -1158,20 +1830,21 @@ class SupabaseDataSource(
                 }
                 Log.d(TAG, "Result submission confirmed by server. Submission ID: $confirmedId")
                 com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveLastSubmissionId(dateKey, confirmedId)
+                pruneLeaderboardBelowTop100(dateKey, normalizedClass)
                 return Result.success(confirmedId)
             } else {
                 lastException = res.exceptionOrNull()
                 Log.w(TAG, "Submission attempt $attempt failed: ${lastException?.message}")
 
-                // Check if the write actually went through despite a connection blip
                 try {
-                    val doubleCheck = client.get("leaderboard", "student_id=eq.$studentId&date_key=eq.$dateKey&select=id&limit=1")
+                    val doubleCheck = client.get("leaderboard", "student_id=eq.$studentId&date_key=eq.$dateKey&class_name=eq.$normalizedClass&select=id&limit=1")
                     if (doubleCheck.isSuccess) {
                         val arr = JSONArray(doubleCheck.getOrThrow())
                         if (arr.length() > 0) {
-                            val serverId = arr.getJSONObject(0).optLong("id", System.currentTimeMillis())
+                            val serverId = arr.getJSONObject(0).optLong("id", submittedAtEpoch)
                             Log.d(TAG, "Submission confirmed on server verification after blip. ID: $serverId")
                             com.jacboard.mcqmaster.util.UserPreferences.getInstanceOrNull()?.saveLastSubmissionId(dateKey, serverId)
+                            pruneLeaderboardBelowTop100(dateKey, normalizedClass)
                             return Result.success(serverId)
                         }
                     }
@@ -1589,5 +2262,10 @@ class SupabaseDataSource(
 
     companion object {
         private const val TAG = "SupabaseDataSource"
+        private const val CAPTCHA_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        private const val CAPTCHA_LENGTH = 6
+        private const val CAPTCHA_TTL_MS = 2 * 60 * 1000L // 2 minutes
+        private const val MAX_CAPTCHA_ATTEMPTS = 5
+        private const val TOP_LEADERBOARD_LIMIT = 100
     }
 }

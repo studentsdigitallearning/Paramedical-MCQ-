@@ -334,8 +334,35 @@ data class DailyLeaderboardEntry(
     val isCurrentUser: Boolean = false,
     val attemptsCount: Int = 1,
     val avatarInitials: String = "",
-    val rollNo: String? = null
-)
+    val rollNo: String? = null,
+    val accuracy: Float = if (totalMarks > 0f) (score / totalMarks) * 100f else 0f,
+    val submittedAtEpoch: Long = 0L
+) {
+    companion object {
+        /**
+         * Official Daily Test Ranking Rules:
+         * 1. Highest score first (score DESC)
+         * 2. Highest accuracy next (accuracy DESC)
+         * 3. Earliest valid submission timestamp as final tie-breaker (submittedAtEpoch ASC when present, then completionTimeSeconds ASC, then studentId ASC)
+         */
+        val RANKING_COMPARATOR: Comparator<DailyLeaderboardEntry> = Comparator { a, b ->
+            val scoreCmp = b.score.compareTo(a.score)
+            if (scoreCmp != 0) return@Comparator scoreCmp
+
+            val accCmp = b.accuracy.compareTo(a.accuracy)
+            if (accCmp != 0) return@Comparator accCmp
+
+            if (a.submittedAtEpoch > 0L && b.submittedAtEpoch > 0L && a.submittedAtEpoch != b.submittedAtEpoch) {
+                return@Comparator a.submittedAtEpoch.compareTo(b.submittedAtEpoch)
+            }
+
+            val timeCmp = a.completionTimeSeconds.compareTo(b.completionTimeSeconds)
+            if (timeCmp != 0) return@Comparator timeCmp
+
+            a.studentId.compareTo(b.studentId)
+        }
+    }
+}
 
 
 data class DailyEligibilityResult(
@@ -385,7 +412,13 @@ data class DailyLeaderboardState(
     val isLoading: Boolean = false,
     val errorType: LeaderboardErrorType = LeaderboardErrorType.NONE,
     val errorMessage: String? = null
-)
+) {
+    /**
+     * The student application displays only the Top 10, while Supabase retains the Top 100.
+     */
+    val top10: List<DailyLeaderboardEntry>
+        get() = top100.take(10)
+}
 
 data class MonthlyStreakDayStatus(
     val dayOfMonth: Int,
@@ -405,5 +438,48 @@ data class MonthlyStreakState(
     val nextMilestoneDaysRemaining: Int,
     val days: List<MonthlyStreakDayStatus>
 )
+
+data class CaptchaGlyph(
+    val char: Char,
+    val rotationDeg: Float,
+    val verticalOffsetRatio: Float,
+    val scaleFactor: Float = 1.0f
+) {
+    val rotationDegrees: Float
+        get() = rotationDeg
+    val verticalOffsetDp: Float
+        get() = verticalOffsetRatio * 24f
+    val scale: Float
+        get() = scaleFactor
+}
+
+data class CaptchaChallengeUiState(
+    val challengeId: String = "",
+    val glyphs: List<CaptchaGlyph> = emptyList(),
+    val issuedAtEpochMs: Long = 0L,
+    val expiresAtEpochMs: Long = 0L,
+    val remainingSeconds: Int = 120,
+    val maxAttempts: Int = 5,
+    val attemptsUsed: Int = 0,
+    val isLoading: Boolean = false,
+    val isVerifying: Boolean = false,
+    val isVerified: Boolean = false,
+    val isExpired: Boolean = false,
+    val errorMessage: String? = null
+) {
+    val attemptsRemaining: Int
+        get() = (maxAttempts - attemptsUsed).coerceAtLeast(0)
+}
+
+data class CaptchaVerificationResult(
+    val verified: Boolean,
+    val rollNo: String? = null,
+    val attemptsRemaining: Int = 5,
+    val expired: Boolean = false,
+    val maxAttemptsReached: Boolean = false,
+    val shouldRefresh: Boolean = false,
+    val errorMessage: String? = null
+)
+
 
 
